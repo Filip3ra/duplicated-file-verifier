@@ -7,7 +7,7 @@ from duplicate_verifier.grouping import cluster_hashes
 from duplicate_verifier.hashing import hamming_distance
 from duplicate_verifier.models import ImageFile
 from duplicate_verifier.quality import pick_keep
-from duplicate_verifier.scanner import scan_images
+from duplicate_verifier.scanner import scan_files, scan_images
 
 
 def test_format_duration_and_bytes() -> None:
@@ -19,8 +19,8 @@ def test_format_duration_and_bytes() -> None:
 
 
 def test_estimate_is_lower_without_phash() -> None:
-    full = estimate_seconds(100, 50 * 1024 * 1024, exact_only=False)
-    exact = estimate_seconds(100, 50 * 1024 * 1024, exact_only=True)
+    full = estimate_seconds(100, 50 * 1024 * 1024, include_visual=True)
+    exact = estimate_seconds(100, 50 * 1024 * 1024, include_visual=False)
     assert full > exact > 0
 
 
@@ -66,3 +66,18 @@ def test_scanner_finds_nested_images(tmp_path: Path) -> None:
     stats = scan_images(tmp_path)
     assert stats.total_files == 1
     assert stats.files[0].path.name == "photo.jpg"
+
+
+def test_scanner_all_files_includes_documents(tmp_path: Path) -> None:
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-fake")
+    (tmp_path / "a.docx").write_bytes(b"PK-fake")
+    nested = tmp_path / "docs"
+    nested.mkdir()
+    (nested / "a copy.pdf").write_bytes(b"%PDF-fake")
+    ignored = tmp_path / "node_modules"
+    ignored.mkdir()
+    (ignored / "lib.js").write_bytes(b"should-skip")
+    stats = scan_files(tmp_path, all_files=True)
+    names = {item.path.name for item in stats.files}
+    assert names == {"a.pdf", "a.docx", "a copy.pdf"}
+    assert "lib.js" not in names

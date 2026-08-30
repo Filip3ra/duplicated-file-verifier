@@ -247,7 +247,40 @@ dupcheck "C:/Users/SEU_USUARIO/Pictures" -y
 dupcheck --delete -y
 ```
 
-Só duplicatas idênticas (mais rápido, sem comparar “a mesma foto em JPEG ruim”):
+Só cópias **idênticas** (SHA-256), sem pHash — ainda só **imagens**:
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact
+```
+
+SHA-256 em **qualquer tipo de arquivo** (PDF, DOCX, ZIP, txt, etc.):
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact --all-files
+```
+
+`--all-files` entra na mesma linha. O `visual` continua valendo **apenas para imagens**, mesmo se você misturar os métodos:
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact visual --all-files
+```
+
+Só imagens **parecidas** (pHash). `--threshold` só vale neste método:
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual
+dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual --threshold 4
+```
+
+Os dois métodos no mesmo comando (padrão, se você omitir `--method`):
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact visual
+```
+
+No final o terminal mostra o tamanho analisado e o espaço marcado para a lixeira **separado por método** (exatas vs visuais) e o total.
+
+Atalho antigo, equivalente a `--method exact`:
 
 ```bash
 dupcheck "C:/Users/SEU_USUARIO/Pictures" --exact-only
@@ -278,8 +311,10 @@ python -m pytest
 | Opção | Função |
 | --- | --- |
 | `--delete` | Sem pasta: aplica o último plano. Com pasta: analisa e envia à lixeira |
-| `--exact-only` | Apenas SHA-256, sem comparação visual |
-| `--threshold N` | Quão parecidas as fotos precisam ser (padrão: 8). Aumente se faltar match; diminua se juntar fotos diferentes |
+| `--method exact` / `visual` | Um ou os dois. Padrão: `exact visual` |
+| `--all-files` | No `exact`, inclui PDF, DOCX e qualquer outro arquivo (não só imagens) |
+| `--exact-only` | Atalho de `--method exact` |
+| `--threshold N` | Só no visual: distância máxima de Hamming (padrão 8). **0** = hashes iguais; **maior** = aceita fotos mais diferentes |
 | `--workers N` | Processos em paralelo para hashing |
 | `-y` / `--yes` | Não pergunta confirmação |
 | `--include-hidden` | Inclui pastas e arquivos que começam com `.` |
@@ -295,10 +330,32 @@ Grupo 1 — duplicatas visuais (distância perceptual até 4)
   DELETAR  compressed.jpg   1920x1080    340.00 KB
 ```
 
-`MANTER` é a melhor versão do grupo. `DELETAR` são as que `dupcheck --delete` enviaria à lixeira. Distância perceptual 0 costuma ser a mesma imagem; valores até o `--threshold` ainda entram como “a mesma foto”.
+`MANTER` é a melhor versão do grupo. `DELETAR` são as que `dupcheck --delete` enviaria à lixeira.
+
+No rodapé aparece o **tamanho analisado** e o **espaço recuperável** por método (cópias exatas vs visuais) e o total.
+
+## Distância visual (pHash / Hamming)
+
+O método `visual` não compara pixel a pixel. Cada imagem vira um **hash perceptual de 64 bits** (pHash): um “resumo” da foto depois de reduzir e olhar frequências (DCT). Duas versões da mesma foto (JPEG ruim, outro tamanho, PNG vs JPG) tendem a hashes **parecidos**.
+
+A **distância de Hamming** é quantos desses 64 bits diferem:
+
+| Valor | Significado |
+| --- | --- |
+| **0** | Hashes iguais — quase certamente a mesma imagem |
+| **1–8** | Muito parecidas (compressão, redimensionar leve). **8 é o padrão** |
+| **12–16** | Mais permissivo: pode juntar fotos só semelhantes e gerar falso positivo |
+| **64** | Todos os bits diferentes — imagens sem relação |
+
+`--threshold N` é o **teto**: entram no mesmo grupo pares com distância **≤ N**.
+
+- **Baixar** (ex.: 4) → mais restrito, menos grupos, menos risco de misturar fotos diferentes  
+- **Subir** (ex.: 12) → mais grupos, mais chance de achar a mesma foto muito reencodada, e de juntar coisa que não é cópia  
+
+O método `exact` ignora isso: só entra arquivo com os **mesmos bytes** (SHA-256). Uma foto salva de novo em JPEG **não** é exact.
 
 ## Limitações atuais
 
-- Foco em **imagens**. Outros tipos de arquivo vêm depois (para documentos/binários o SHA-256 já resolve duplicata exata).
+- Sem `--all-files`, a varredura padrão é só **imagens**. Com `--all-files`, o `exact` vale para qualquer arquivo; o `visual` continua só em imagens.
 - Recortes, filtros pesados ou fotos só parecidas (mesmo lugar, outro clique) em geral **não** são o mesmo arquivo — o pHash não deve agrupá-los com o limiar padrão.
 - A “menor qualidade” é uma heurística (resolução, tamanho, formato), não um índice fotográfico profissional.

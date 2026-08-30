@@ -8,12 +8,20 @@ from pathlib import Path
 from send2trash import send2trash
 
 from duplicate_verifier import __version__
-from duplicate_verifier.constants import DEFAULT_HAMMING_THRESHOLD, IMAGE_EXTENSIONS
+from duplicate_verifier.constants import (
+    ALL_METHODS,
+    DEFAULT_HAMMING_THRESHOLD,
+    IMAGE_EXTENSIONS,
+    METHOD_EXACT,
+    METHOD_VISUAL,
+    PHASH_BITS,
+    is_image_path,
+)
 from duplicate_verifier.estimate import estimate_seconds, format_bytes, format_duration
 from duplicate_verifier.models import AnalysisResult, DuplicateGroup, GroupKind, ImageFile, ScanStats
-from duplicate_verifier.pipeline import analyze, default_workers
+from duplicate_verifier.pipeline import analyze, default_workers, normalize_methods
 from duplicate_verifier.plan import clear_plan, load_plan, planned_files, save_plan
-from duplicate_verifier.scanner import scan_images
+from duplicate_verifier.scanner import scan_files
 
 GREEN = "\033[32m"
 RED = "\033[31m"
@@ -38,15 +46,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Diretório inválido: {root}", file=sys.stderr)
         return 1
 
-    stats = scan_images(
+    selected = normalize_methods(args.method, exact_only=args.exact_only)
+
+    stats = scan_files(
         root,
         follow_symlinks=args.follow_symlinks,
         include_hidden=args.include_hidden,
+        all_files=args.all_files,
     )
-    _print_inventory(stats, exact_only=args.exact_only, use_color=use_color)
+    _print_inventory(
+        stats,
+        methods=selected,
+        threshold=args.threshold,
+        all_files=args.all_files,
+        use_color=use_color,
+    )
 
     if stats.total_files == 0:
-        print("Nenhuma imagem encontrada.")
+        print("Nenhum arquivo encontrado." if args.all_files else "Nenhuma imagem encontrada.")
         save_plan(root, AnalysisResult(groups=[], failed=[], unique_contents=0, elapsed_seconds=0))
         return 0
 
@@ -58,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         result = analyze(
             stats.files,
             threshold=args.threshold,
-            exact_only=args.exact_only,
+            methods=selected,
             workers=args.workers,
             progress=not args.quiet,
         )
@@ -173,9 +190,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Envia à lixeira as cópias do último plano (ou analisa e apaga se houver diretório)",
     )
     parser.add_argument(
+        "--method",
+        nargs="+",
+        choices=ALL_METHODS,
+        default=list(ALL_METHODS),
+        metavar="METODO",
+        help=(
+            "Um ou mais métodos: exact (cópia byte a byte) e/ou visual "
+            "(imagens parecidas por pHash). Padrão: exact visual"
+        ),
+    )
+    parser.add_argument(
         "--exact-only",
         action="store_true",
-        help="Compara só o conteúdo byte a byte (SHA-256), sem hash perceptual",
+        help="Atalho de --method exact (só cópias idênticas)",
     )
     parser.add_argument(
         "--threshold",
@@ -183,8 +211,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_HAMMING_THRESHOLD,
         metavar="N",
         help=(
-            "Distância de Hamming máxima para considerar duas imagens iguais "
-            f"(padrão: {DEFAULT_HAMMING_THRESHOLD}; maior = mais permissivo)"
+            "Só no método visual: distância de Hamming máxima "
+            f"(0 = hashes iguais; padrão {DEFAULT_HAMMING_THRESHOLD}; "
+            f"máximo prático {PHASH_BITS}). Quanto maior, mais imagens diferentes entram"
         ),
     )
     parser.add_argument(
@@ -198,6 +227,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="Não pergunta confirmação (análise e, se --delete, remoção)",
+    )
+    parser.add_argument(
+        "--all-files",
+        action="store_true",
+        help=(
+            "No método exact, analisa qualquer tipo de arquivo (PDF, DOCX, ZIP, etc.), "
+            "não só imagens. O método visual continua restrito a imagens"
+        ),
     )
     parser.add_argument(
         "--include-hidden",
@@ -215,15 +252,37 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_inventory(stats: ScanStats, *, exact_only: bool, use_color: bool) -> None:
-    estimated = estimate_seconds(stats.total_files, stats.total_bytes, exact_only=exact_only)
+def _print_inventory(
+    stats: ScanStats,
+    *,
+    methods: tuple[str, ...],
+    threshold: int,
+    all_files: bool,
+    use_color: bool,
+) -> None:
+    image_count = sum(1 for item in stats.files if is_image_path(item.path))
+    estimated = estimate_seconds(
+        stats.total_files,
+        stats.total_bytes,
+        include_visual=METHOD_VISUAL in methods,
+        visual_count=image_count if METHOD_VISUAL in methods else 0,
+    )
     dim = DIM if use_color else ""
     reset = RESET if use_color else ""
 
+    labels = []
+    if METHOD_EXACT in methods:
+        scope = "qualquer arquivo" if all_files else "imagens"
+        labels.append(f"exact (cópia idêntica, SHA-256, {scope})")
+    if METHOD_VISUAL in methods:
+        labels.append(f"visual (pHash, só imagens, distância ≤ {threshold})")
+
+    kind = "Arquivos encontrados" if all_files else "Imagens encontradas"
     print()
     print(f"Diretório: {stats.root}")
-    print(f"Imagens encontradas: {stats.total_files}")
+    print(f"{kind}: {stats.total_files}")
     print(f"Tamanho total: {format_bytes(stats.total_bytes)}")
+    print(f"Métodos: {'; '.join(labels)}")
     if stats.extension_counts:
         parts = [
             f"{ext} ({count})"
@@ -232,27 +291,30 @@ def _print_inventory(stats: ScanStats, *, exact_only: bool, use_color: bool) -> 
         print(f"Extensões: {', '.join(parts)}")
     if stats.permission_errors:
         print(f"Avisos: {stats.permission_errors} itens sem permissão de leitura")
+    if METHOD_VISUAL in methods:
+        print()
+        print("Distância visual (Hamming do pHash de 64 bits):")
+        print("  0  = hashes iguais (quase certamente a mesma foto)")
+        print(f"  {threshold}  = limite desta varredura (valores até aqui entram no mesmo grupo)")
+        print(f"  {PHASH_BITS} = imagens totalmente diferentes")
+        print("  Quanto menor o limite, mais restrito; quanto maior, mais 'parecido' entra.")
     print()
     print(f"Tempo estimado de execução: {format_duration(estimated)}")
     print(f"{dim}  (estimativa conservadora; o tempo real aparece ao final){reset}")
     print()
-    known = ", ".join(sorted(IMAGE_EXTENSIONS))
-    print(f"{dim}Formatos nesta versão: {known}{reset}")
+    if all_files:
+        print(f"{dim}exact: todos os arquivos. visual: {', '.join(sorted(IMAGE_EXTENSIONS))}{reset}")
+    else:
+        known = ", ".join(sorted(IMAGE_EXTENSIONS))
+        print(f"{dim}Formatos nesta versão: {known}{reset}")
     print()
 
 
 def _print_report(stats: ScanStats, result: AnalysisResult, *, use_color: bool) -> None:
-    redundant = sum(len(group.delete) for group in result.groups)
-    reclaimable = sum(group.reclaimable_bytes for group in result.groups)
     print()
     print(
         f"Análise concluída em {format_duration(result.elapsed_seconds)} "
         f"({result.unique_contents} conteúdo(s) único(s) por hash)."
-    )
-    print(
-        f"{len(result.groups)} grupo(s) de duplicatas | "
-        f"{redundant} arquivo(s) redundante(s) | "
-        f"{format_bytes(reclaimable)} recuperáveis"
     )
     print()
 
@@ -263,12 +325,46 @@ def _print_report(stats: ScanStats, result: AnalysisResult, *, use_color: bool) 
             _print_group(index, group, stats.root, use_color=use_color)
             print()
 
+    _print_space_summary(stats, result)
+
     if result.failed:
         print(f"Arquivos ignorados ({len(result.failed)}):")
         for image in result.failed:
             reason = image.error or "não foi possível processar"
             print(f"  - {_rel(image.path, stats.root)}: {reason}")
         print()
+
+
+def _print_space_summary(stats: ScanStats, result: AnalysisResult) -> None:
+    exact_bytes = result.reclaimable_bytes(GroupKind.EXACT)
+    visual_bytes = result.reclaimable_bytes(GroupKind.VISUAL)
+    exact_count = result.reclaimable_count(GroupKind.EXACT)
+    visual_count = result.reclaimable_count(GroupKind.VISUAL)
+    total_bytes = result.reclaimable_bytes()
+    total_count = result.reclaimable_count()
+
+    print("------------------------------------------------------------")
+    print(
+        f"Tamanho analisado:                 {format_bytes(stats.total_bytes):>10}  "
+        f"({stats.total_files} arquivo(s))"
+    )
+    print("Espaço marcado para a lixeira:")
+    if METHOD_EXACT in result.methods:
+        print(
+            f"  Cópias exatas (mesmo arquivo):   {format_bytes(exact_bytes):>10}  "
+            f"({exact_count} arquivo(s))"
+        )
+    if METHOD_VISUAL in result.methods:
+        print(
+            f"  Cópias visuais (distância ≤ {result.threshold}): "
+            f"{format_bytes(visual_bytes):>10}  ({visual_count} arquivo(s))"
+        )
+    print(
+        f"  Total recuperável:               {format_bytes(total_bytes):>10}  "
+        f"({total_count} arquivo(s))"
+    )
+    print("------------------------------------------------------------")
+    print()
 
 
 def _print_group(index: int, group: DuplicateGroup, root: Path, *, use_color: bool) -> None:
@@ -286,7 +382,7 @@ def _print_file_line(image, root: Path, *, keep: bool, use_color: bool) -> None:
     label = "MANTER " if keep else "DELETAR"
     if use_color:
         label = f"{GREEN}MANTER {RESET}" if keep else f"{RED}DELETAR{RESET}"
-    dims = f"{image.width}x{image.height}" if image.width and image.height else "?x?"
+    dims = f"{image.width}x{image.height}" if image.width and image.height else (image.path.suffix.lower() or "arquivo")
     print(
         f"  {label}  {_rel(image.path, root):<60}  "
         f"{dims:>12}  {format_bytes(image.size_bytes):>10}"

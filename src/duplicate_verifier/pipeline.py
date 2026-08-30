@@ -7,7 +7,12 @@ from time import perf_counter
 
 from tqdm import tqdm
 
-from duplicate_verifier.constants import DEFAULT_HAMMING_THRESHOLD
+from duplicate_verifier.constants import (
+    DEFAULT_HAMMING_THRESHOLD,
+    METHOD_EXACT,
+    METHOD_VISUAL,
+    is_image_path,
+)
 from duplicate_verifier.grouping import cluster_hashes
 from duplicate_verifier.hashing import hamming_distance, perceptual_fingerprint, sha256_file
 from duplicate_verifier.models import AnalysisResult, DuplicateGroup, GroupKind, ImageFile
@@ -19,16 +24,36 @@ def default_workers() -> int:
     return max(1, min(8, cpu))
 
 
+def normalize_methods(
+    methods: list[str] | tuple[str, ...] | None,
+    *,
+    exact_only: bool = False,
+) -> tuple[str, ...]:
+    if exact_only:
+        return (METHOD_EXACT,)
+    if not methods:
+        return (METHOD_EXACT, METHOD_VISUAL)
+    seen: list[str] = []
+    for method in methods:
+        if method not in seen:
+            seen.append(method)
+    return tuple(seen)
+
+
 def analyze(
     files: list[ImageFile],
     *,
     threshold: int = DEFAULT_HAMMING_THRESHOLD,
+    methods: list[str] | tuple[str, ...] | None = None,
     exact_only: bool = False,
     workers: int | None = None,
     progress: bool = True,
 ) -> AnalysisResult:
     started = perf_counter()
     worker_count = default_workers() if workers is None else max(1, workers)
+    selected = normalize_methods(methods, exact_only=exact_only)
+    want_exact = METHOD_EXACT in selected
+    want_visual = METHOD_VISUAL in selected
 
     _assign_sha256(files, workers=worker_count, progress=progress)
 
@@ -40,21 +65,30 @@ def analyze(
             continue
         by_sha[image.sha256].append(image)
 
-    if exact_only:
-        groups = _groups_from_sha_map(by_sha)
-        return AnalysisResult(
-            groups=_sorted_groups(groups),
-            failed=failed,
-            unique_contents=len(by_sha),
-            elapsed_seconds=perf_counter() - started,
+    groups: list[DuplicateGroup] = []
+    if want_exact:
+        groups.extend(_groups_from_sha_map(by_sha))
+
+    if want_visual:
+        visual_by_sha = {
+            digest: copies
+            for digest, copies in by_sha.items()
+            if is_image_path(copies[0].path)
+        }
+        decode_failed = _assign_perceptual(visual_by_sha, workers=worker_count, progress=progress)
+        for image in decode_failed:
+            if image not in failed:
+                failed.append(image)
+        claimed = {id(item) for group in groups for item in group.delete}
+        groups.extend(
+            _groups_from_visual_clusters(
+                visual_by_sha,
+                threshold,
+                claimed=claimed,
+                include_exact_extras=not want_exact,
+            )
         )
 
-    decode_failed = _assign_perceptual(by_sha, workers=worker_count, progress=progress)
-    for image in decode_failed:
-        if image not in failed:
-            failed.append(image)
-
-    groups = _groups_from_visual_clusters(by_sha, threshold)
     grouped_ids = {id(item) for group in groups for item in group.files}
     failed = [image for image in failed if id(image) not in grouped_ids]
 
@@ -63,6 +97,8 @@ def analyze(
         failed=failed,
         unique_contents=len(by_sha),
         elapsed_seconds=perf_counter() - started,
+        methods=selected,
+        threshold=threshold,
     )
 
 
@@ -176,45 +212,49 @@ def _groups_from_sha_map(by_sha: dict[str, list[ImageFile]]) -> list[DuplicateGr
 def _groups_from_visual_clusters(
     by_sha: dict[str, list[ImageFile]],
     threshold: int,
+    *,
+    claimed: set[int],
+    include_exact_extras: bool,
 ) -> list[DuplicateGroup]:
     indexed: list[tuple[str, int, list[ImageFile]]] = []
-    leftover_exact: list[list[ImageFile]] = []
-
     for digest, copies in by_sha.items():
         phash = copies[0].phash
         if phash is None:
-            if len(copies) > 1:
-                leftover_exact.append(copies)
             continue
         indexed.append((digest, phash, copies))
 
-    groups: list[DuplicateGroup] = []
-    for copies in leftover_exact:
-        keep, delete = pick_keep(copies)
-        groups.append(DuplicateGroup(kind=GroupKind.EXACT, keep=keep, delete=delete))
-
     if not indexed:
-        return groups
+        return []
 
     hashes = [item[1] for item in indexed]
     clusters = cluster_hashes(hashes, threshold)
+    groups: list[DuplicateGroup] = []
 
     for members in clusters:
-        files: list[ImageFile] = []
         unique_shas: set[str] = set()
         unique_hashes: list[int] = []
+        files: list[ImageFile] = []
         for index in members:
             digest, phash, copies = indexed[index]
             unique_shas.add(digest)
             unique_hashes.append(phash)
             files.extend(copies)
-        if len(files) < 2:
+        if len(unique_shas) < 2:
             continue
-        keep, delete = pick_keep(files)
-        kind = GroupKind.EXACT if len(unique_shas) == 1 else GroupKind.VISUAL
+        keep, rest = pick_keep(files)
+        if include_exact_extras:
+            delete = [item for item in rest if id(item) not in claimed]
+        else:
+            delete = [
+                item
+                for item in rest
+                if id(item) not in claimed and item.sha256 != keep.sha256
+            ]
+        if not delete:
+            continue
         groups.append(
             DuplicateGroup(
-                kind=kind,
+                kind=GroupKind.VISUAL,
                 keep=keep,
                 delete=delete,
                 max_hamming=_max_hamming(unique_hashes),

@@ -32,6 +32,8 @@ def test_cli_dry_run_reports_visual_duplicate(tmp_path: Path, capsys) -> None:
     assert "copy.jpg" in out
     assert "Plano salvo" in out
     assert "dupcheck --delete" in out
+    assert "Total recuperável:" in out
+    assert "Cópias visuais" in out
     assert (tmp_path / "copy.jpg").exists()
     plan = load_plan()
     assert plan is not None
@@ -89,3 +91,50 @@ def test_cli_delete_applies_last_plan_without_rescan(tmp_path: Path, capsys, mon
     assert (tmp_path / "original.png").exists()
     assert not (tmp_path / "copy.jpg").exists()
     assert load_plan() is None
+
+
+def test_cli_method_exact_skips_visual_match(tmp_path: Path, capsys) -> None:
+    save_image(tmp_path / "original.png", scene_keep(320))
+    save_image(tmp_path / "copy.jpg", scene_keep(160), quality=30)
+    code = main(
+        [
+            str(tmp_path),
+            "--method",
+            "exact",
+            "-y",
+            "--no-color",
+            "--quiet",
+            "--workers",
+            "1",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Nenhuma duplicata encontrada" in out
+    assert "Cópias exatas" in out
+    assert "Cópias visuais" not in out
+
+
+def test_cli_all_files_finds_duplicate_pdf(tmp_path: Path, capsys) -> None:
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-same")
+    (tmp_path / "b.pdf").write_bytes(b"%PDF-same")
+    (tmp_path / "c.pdf").write_bytes(b"%PDF-other")
+    code = main(
+        [
+            str(tmp_path),
+            "--method",
+            "exact",
+            "--all-files",
+            "-y",
+            "--no-color",
+            "--quiet",
+            "--workers",
+            "1",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Arquivos encontrados: 3" in out
+    assert "a.pdf" in out
+    assert "b.pdf" in out
+    assert "Cópias exatas" in out

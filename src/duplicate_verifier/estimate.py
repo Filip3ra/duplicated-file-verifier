@@ -3,12 +3,19 @@ from __future__ import annotations
 from duplicate_verifier.constants import PHASH_IMAGES_PER_SEC, SHA256_BYTES_PER_SEC
 
 
-def estimate_seconds(file_count: int, total_bytes: int, *, exact_only: bool = False) -> float:
-    """Rough wall-clock estimate for hashing + perceptual analysis."""
+def estimate_seconds(
+    file_count: int,
+    total_bytes: int,
+    *,
+    include_visual: bool = True,
+    visual_count: int | None = None,
+) -> float:
+    """Rough wall-clock estimate for hashing + optional perceptual analysis."""
     if file_count <= 0:
         return 0.0
     sha_seconds = total_bytes / SHA256_BYTES_PER_SEC
-    phash_seconds = 0.0 if exact_only else file_count / PHASH_IMAGES_PER_SEC
+    hash_targets = visual_count if visual_count is not None else file_count
+    phash_seconds = hash_targets / PHASH_IMAGES_PER_SEC if include_visual else 0.0
     overhead = 0.4
     return sha_seconds + phash_seconds + overhead
 

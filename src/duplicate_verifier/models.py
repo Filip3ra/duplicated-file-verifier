@@ -67,3 +67,13 @@ class AnalysisResult:
     failed: list[ImageFile]
     unique_contents: int
     elapsed_seconds: float
+    methods: tuple[str, ...] = ("exact", "visual")
+    threshold: int = 8
+
+    def reclaimable_bytes(self, kind: GroupKind | None = None) -> int:
+        groups = self.groups if kind is None else [g for g in self.groups if g.kind is kind]
+        return sum(group.reclaimable_bytes for group in groups)
+
+    def reclaimable_count(self, kind: GroupKind | None = None) -> int:
+        groups = self.groups if kind is None else [g for g in self.groups if g.kind is kind]
+        return sum(len(group.delete) for group in groups)
