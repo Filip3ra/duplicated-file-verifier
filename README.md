@@ -23,92 +23,254 @@ O tempo estimado usa taxas conservadoras (disco lento / fotos grandes). O tempo 
 
 ## Requisitos
 
-- Python **3.10** ou superior
-- pip
+- Python **3.10 ou superior** (na prática use 3.12)
+- Git (só se for clonar o repositório)
 
 Formatos nesta versão: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.tif`, `.tiff`, `.jfif`, `.jpe`.
 
-HEIC/RAW ainda não entram; a ideia é expandir para outros tipos de arquivo depois.
+HEIC/RAW ainda não entram.
 
-## Instalação
+### PowerShell ou Git Bash no Windows?
 
-É necessário **Python 3.10+**. Se o comando `python` não funcionar no PowerShell, instale pelo [python.org](https://www.python.org/downloads/) (marque *Add python.exe to PATH*) ou:
+Dá para fazer **quase tudo no Git Bash**. Não é obrigatório usar PowerShell.
 
-```powershell
-winget install Python.Python.3.12
+| O quê | Git Bash | PowerShell |
+| --- | --- | --- |
+| Instalar o Python | Baixar o instalador (passo 0) ou `winget` no PowerShell | Igual, ou `winget` direto |
+| Criar venv, instalar, rodar `dupcheck` | Sim | Sim |
+| `Set-ExecutionPolicy` | **Não precisa** | Só se `Activate.ps1` for bloqueado |
+
+No Windows, o caminho do venv é sempre `.venv/Scripts/...` (no Linux/macOS é `.venv/bin/...`). Por isso o comando de ativar muda de terminal para terminal.
+
+---
+
+## Instalação (passo a passo)
+
+Faça os passos **na ordem**, no **mesmo terminal**, sem pular linha no meio de um comando.
+
+### 0) Instalar o Python (só na primeira vez naquele PC)
+
+1. Baixe o instalador: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+2. Rode o `.exe`
+3. **Marque** `Add python.exe to PATH` na primeira tela
+4. Instale, **feche o terminal** e abra um **novo**
+
+Confira (qualquer um destes deve imprimir `3.10` ou maior):
+
+```bash
+python --version
 ```
 
-Abra um terminal novo depois da instalação. Na pasta do repositório:
+Se der `command not found` ou abrir a Microsoft Store:
+
+```bash
+python3 --version
+py -3 --version
+```
+
+Ainda falhou? O Python não está no PATH. Reinstale marcando a opção acima, ou no **PowerShell**:
 
 ```powershell
+winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
+```
+
+Abra outro terminal e teste `python --version` de novo.
+
+### 1) Ir até a pasta do projeto
+
+Git Bash (troque o caminho se o seu for outro):
+
+```bash
+cd /c/Repositórios/duplicated-file-verifier
+```
+
+PowerShell:
+
+```powershell
+cd C:\Repositórios\duplicated-file-verifier
+```
+
+Linux / macOS:
+
+```bash
+cd ~/duplicated-file-verifier
+```
+
+Se ainda não clonou:
+
+```bash
+git clone https://github.com/Filip3ra/duplicated-file-verifier.git
+cd duplicated-file-verifier
+```
+
+### 2) Criar o ambiente virtual
+
+O comando **não** é `venv`. É `python -m venv .venv`.
+
+Git Bash / PowerShell no Windows:
+
+```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -e .
 ```
 
-Se a ativação do venv for bloqueada, use:
+Se `python` falhar, tente:
 
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```bash
+python3 -m venv .venv
+```
+
+ou:
+
+```bash
+py -3 -m venv .venv
 ```
 
 Linux / macOS:
 
 ```bash
 python3 -m venv .venv
+```
+
+Isso cria a pasta `.venv` **dentro do projeto**. Só precisa uma vez por computador.
+
+### 3) Ativar o ambiente
+
+O prompt deve passar a mostrar `(.venv)`.
+
+**Git Bash (Windows):**
+
+```bash
+source .venv/Scripts/activate
+```
+
+**PowerShell (Windows):**
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Se o PowerShell recusar o script:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Depois rode o `Activate.ps1` de novo.
+
+**Linux / macOS:**
+
+```bash
 source .venv/bin/activate
+```
+
+Para sair do ambiente depois: `deactivate`.
+
+Não quer ativar? Pule o passo 3 e no passo 5 use o executável completo (está mais abaixo).
+
+### 4) Instalar o programa e as dependências
+
+Com o venv **já ativo** (`(.venv)` no prompt), ainda na pasta do projeto:
+
+```bash
 python -m pip install --upgrade pip
-pip install -e .
+python -m pip install -e .
 ```
 
-Isso instala o comando `dupcheck`. Dependências de desenvolvimento (testes):
+Espere terminar (baixa Pillow, numpy, scipy, etc.). Só precisa de novo se clonar o repo em outro PC ou apagar o `.venv`.
 
-```powershell
-pip install -e ".[dev]"
+Confira:
+
+```bash
+dupcheck --version
 ```
 
-## Uso
+Tem que aparecer algo como `dupcheck 0.1.0`. Se der `command not found`, o venv não está ativo: volte ao passo 3, ou use o caminho completo do passo 5.
 
-Dois passos. Primeiro analisa e **grava um plano** (nada vai para a lixeira):
+### 5) Rodar
 
-```powershell
-dupcheck "C:\caminho\para\fotos"
+Primeiro comando: **só analisa** (não manda nada para a lixeira) e grava um plano.
+
+**Git Bash** — use caminho estilo `/c/...` ou `C:/...`:
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures"
 ```
 
-Você verá quantas imagens existem, o tempo estimado, e os grupos MANTER / DELETAR.
-
-Se a lista estiver certa, envie só o que já foi marcado — **sem analisar de novo**:
+**PowerShell:**
 
 ```powershell
+dupcheck "C:\Users\SEU_USUARIO\Pictures"
+```
+
+Ele mostra quantas imagens achou, um tempo estimado, e pergunta se continua. Depois lista `MANTER` / `DELETAR`.
+
+Segundo comando: **não analisa de novo**. Envia à lixeira o que o último plano marcou. `--delete` vai **na mesma linha**:
+
+```bash
 dupcheck --delete
 ```
 
-`--delete` vai **na mesma linha**. O comando mostra o último plano e pede confirmação antes de mandar para a lixeira.
+Confirme quando ele perguntar. Os arquivos vão para a **Lixeira**, não são apagados de vez.
 
-Ainda dá para analisar e enviar num passo só:
+#### Sem ativar o venv
 
-```powershell
-dupcheck "C:\caminho\para\fotos" --delete
+Git Bash, na pasta do projeto:
+
+```bash
+.venv/Scripts/python.exe -m pip install --upgrade pip
+.venv/Scripts/python.exe -m pip install -e .
+.venv/Scripts/dupcheck.exe "C:/Users/SEU_USUARIO/Pictures"
+.venv/Scripts/dupcheck.exe --delete
 ```
 
-Pular as perguntas (útil em script):
+PowerShell:
 
 ```powershell
-dupcheck "C:\caminho\para\fotos" -y
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\dupcheck.exe "C:\Users\SEU_USUARIO\Pictures"
+.\.venv\Scripts\dupcheck.exe --delete
+```
+
+### Outros comandos úteis
+
+Analisar e enviar à lixeira no mesmo passo:
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures" --delete
+```
+
+Pular as perguntas:
+
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures" -y
 dupcheck --delete -y
 ```
 
-Só duplicatas idênticas, sem hash perceptual (mais rápido):
+Só duplicatas idênticas (mais rápido, sem comparar “a mesma foto em JPEG ruim”):
 
-```powershell
-dupcheck "C:\caminho\para\fotos" --exact-only
+```bash
+dupcheck "C:/Users/SEU_USUARIO/Pictures" --exact-only
 ```
 
-Equivalente sem instalar o comando:
+### Se algo falhar
 
-```powershell
-python -m duplicate_verifier "C:\caminho\para\fotos"
+| Sintoma | Causa típica | O que fazer |
+| --- | --- | --- |
+| `python: command not found` ou abre a Store | Python não instalado / não está no PATH | Passo 0; feche e reabra o terminal |
+| `venv: command not found` | `venv` não é um comando | Use `python -m venv .venv` |
+| `Activate.ps1` bloqueado | Política do PowerShell | `Set-ExecutionPolicy` (só PowerShell) **ou** use Git Bash |
+| `dupcheck: command not found` | venv inativo | `source .venv/Scripts/activate` (Git Bash) ou o `.exe` do passo 5 |
+| `bash: --delete: command not found` | `--delete` numa linha sozinha | `dupcheck --delete` **junto**, um único comando |
+| `pip` instala mas `dupcheck` não existe | `pip` do sistema, não do venv | Com o venv ativo: `python -m pip install -e .` |
+
+## Testes (opcional)
+
+Com o venv ativo:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest
 ```
 
 ### Opções úteis
@@ -134,13 +296,6 @@ Grupo 1 — duplicatas visuais (distância perceptual até 4)
 ```
 
 `MANTER` é a melhor versão do grupo. `DELETAR` são as que `dupcheck --delete` enviaria à lixeira. Distância perceptual 0 costuma ser a mesma imagem; valores até o `--threshold` ainda entram como “a mesma foto”.
-
-## Testes
-
-```powershell
-pip install -e ".[dev]"
-pytest
-```
 
 ## Limitações atuais
 
