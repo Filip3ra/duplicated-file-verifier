@@ -47,7 +47,7 @@ def test_cli_delete_sends_copies_to_trash(tmp_path: Path, capsys, monkeypatch) -
         sent.append(path)
         Path(path).unlink()
 
-    monkeypatch.setattr("duplicate_verifier.cli.send2trash", fake_send2trash)
+    monkeypatch.setattr("duplicate_verifier.actions.send2trash", fake_send2trash)
     save_image(tmp_path / "original.png", scene_keep(320))
     save_image(tmp_path / "copy.jpg", scene_keep(160), quality=30)
     save_image(tmp_path / "other.png", scene_other(320))
@@ -72,7 +72,7 @@ def test_cli_delete_applies_last_plan_without_rescan(tmp_path: Path, capsys, mon
         sent.append(path)
         Path(path).unlink()
 
-    monkeypatch.setattr("duplicate_verifier.cli.send2trash", fake_send2trash)
+    monkeypatch.setattr("duplicate_verifier.actions.send2trash", fake_send2trash)
     save_image(tmp_path / "original.png", scene_keep(320))
     save_image(tmp_path / "copy.jpg", scene_keep(160), quality=30)
     save_image(tmp_path / "other.png", scene_other(320))

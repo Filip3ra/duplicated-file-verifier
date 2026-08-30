@@ -5,9 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-from send2trash import send2trash
-
 from duplicate_verifier import __version__
+from duplicate_verifier.actions import send_marked_to_trash
 from duplicate_verifier.constants import (
     ALL_METHODS,
     DEFAULT_HAMMING_THRESHOLD,
@@ -20,7 +19,7 @@ from duplicate_verifier.constants import (
 from duplicate_verifier.estimate import estimate_seconds, format_bytes, format_duration
 from duplicate_verifier.models import AnalysisResult, DuplicateGroup, GroupKind, ImageFile, ScanStats
 from duplicate_verifier.pipeline import analyze, default_workers, normalize_methods
-from duplicate_verifier.plan import clear_plan, load_plan, planned_files, save_plan
+from duplicate_verifier.plan import load_plan, planned_files, save_plan
 from duplicate_verifier.scanner import scan_files
 
 GREEN = "\033[32m"
@@ -33,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
     _configure_stdio()
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "gui", False):
+        from duplicate_verifier.gui import run_app
+
+        return run_app(initial_directory=args.directory)
     use_color = _should_color(args.no_color)
 
     if args.directory is None:
@@ -132,35 +135,14 @@ def _trash_files(to_delete: list[ImageFile], *, yes: bool) -> int:
         print("Nenhum arquivo foi movido.")
         return 0
 
-    failures = 0
-    skipped = 0
-    for item in to_delete:
-        target = item.path
-        if not target.is_file():
-            print(f"Já não existe, ignorado: {target}")
-            skipped += 1
-            continue
-        try:
-            current_size = target.stat().st_size
-        except OSError as exc:
-            print(f"Falha ao ler {target}: {exc}", file=sys.stderr)
-            failures += 1
-            continue
-        if item.size_bytes and current_size != item.size_bytes:
-            print(f"Tamanho mudou desde a análise, ignorado: {target}")
-            skipped += 1
-            continue
-        try:
-            send2trash(str(target))
-        except Exception as exc:  # noqa: BLE001 - I/O and trash backend errors
-            print(f"Falha ao enviar {target} à lixeira: {exc}", file=sys.stderr)
-            failures += 1
-
-    deleted = len(to_delete) - failures - skipped
-    print(f"Enviados à lixeira: {deleted}. Ignorados: {skipped}. Falhas: {failures}.")
-    if failures == 0:
-        clear_plan()
-    return 1 if failures else 0
+    result = send_marked_to_trash(to_delete)
+    for message in result.messages:
+        print(message, file=sys.stderr if "Falha" in message else sys.stdout)
+    print(
+        f"Enviados à lixeira: {result.deleted}. "
+        f"Ignorados: {result.skipped}. Falhas: {result.failures}."
+    )
+    return 1 if result.failures else 0
 
 
 def _print_plan_hint(marked: int) -> None:
@@ -183,6 +165,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "directory",
         nargs="?",
         help="Diretório raiz a ser analisado (omitido com --delete para usar o último plano)",
+    )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Abre a janela gráfica (o terminal continua disponível sem esta opção)",
     )
     parser.add_argument(
         "--delete",

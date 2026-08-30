@@ -1,11 +1,16 @@
 # Verificador de arquivos duplicados
 
-Ferramenta de terminal que percorre um diretório (e todas as subpastas) e encontra **imagens duplicadas**:
+Dá para usar de **duas formas** (o mesmo programa):
 
-- **exatas** — o mesmo arquivo copiado (bytes idênticos);
-- **visuais** — a mesma foto em outro formato, resolução ou compressão (por exemplo PNG original vs JPEG comprimido).
+- **Terminal** — comando `dupcheck`
+- **Janela gráfica** — `dupcheck --gui` ou `dupcheck-gui`
 
-Em cada grupo, a ferramenta **mantém a de maior qualidade** e marca as demais para exclusão. Por padrão nada é apagado (simulação).
+Percorre um diretório (e as subpastas) e encontra duplicatas:
+
+- **exatas** — o mesmo arquivo copiado (bytes idênticos), em imagens ou, com `--all-files`, em PDF, DOCX, etc.;
+- **visuais** — a mesma foto em outro formato, resolução ou compressão (só imagens).
+
+Em cada grupo **mantém a de maior qualidade** e marca o resto para a lixeira. Por padrão nada é apagado.
 
 ## Estratégia (e por que não comparar imagem com imagem)
 
@@ -37,7 +42,7 @@ Dá para fazer **quase tudo no Git Bash**. Não é obrigatório usar PowerShell.
 | O quê | Git Bash | PowerShell |
 | --- | --- | --- |
 | Instalar o Python | Baixar o instalador (passo 0) ou `winget` no PowerShell | Igual, ou `winget` direto |
-| Criar venv, instalar, rodar `dupcheck` | Sim | Sim |
+| Criar venv, instalar, rodar `dupcheck` / `dupcheck-gui` | Sim | Sim |
 | `Set-ExecutionPolicy` | **Não precisa** | Só se `Activate.ps1` for bloqueado |
 
 No Windows, o caminho do venv é sempre `.venv/Scripts/...` (no Linux/macOS é `.venv/bin/...`). Por isso o comando de ativar muda de terminal para terminal.
@@ -184,35 +189,67 @@ Confira:
 dupcheck --version
 ```
 
-Tem que aparecer algo como `dupcheck 0.1.0`. Se der `command not found`, o venv não está ativo: volte ao passo 3, ou use o caminho completo do passo 5.
+Tem que aparecer algo como `dupcheck 0.1.0`. Se der `command not found`, o venv não está ativo: volte ao passo 3, ou use o caminho completo no final desta seção.
 
-### 5) Rodar
+### 5) Usar: janela ou terminal
 
-Primeiro comando: **só analisa** (não manda nada para a lixeira) e grava um plano.
+Os dois jeitos ficam disponíveis depois do passo 4. O terminal **não é desligado** pela GUI.
 
-**Git Bash** — use caminho estilo `/c/...` ou `C:/...`:
+#### Janela gráfica
 
 ```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures"
+dupcheck --gui
 ```
 
-**PowerShell:**
+ou:
+
+```bash
+dupcheck-gui
+```
+
+Abrir já com uma pasta:
+
+```bash
+dupcheck --gui "C:/Users/SEU_USUARIO/Pictures"
+```
+
+Na tela: **Procurar** a pasta → **só imagens** ou **todos os arquivos** → marcar **cópias exatas** e/ou **visuais** → distância (se visual) → **Analisar** → conferir MANTER/DELETAR → **Enviar cópias à lixeira** (confirmação). Duplo clique numa linha abre a pasta do arquivo.
+
+Sem ativar o venv (Git Bash, na pasta do projeto):
+
+```bash
+.venv/Scripts/dupcheck-gui.exe
+```
+
+PowerShell:
 
 ```powershell
-dupcheck "C:\Users\SEU_USUARIO\Pictures"
+.\.venv\Scripts\dupcheck-gui.exe
 ```
 
-Ele mostra quantas imagens achou, um tempo estimado, e pergunta se continua. Depois lista `MANTER` / `DELETAR`.
+#### Terminal — lista de comandos
 
-Segundo comando: **não analisa de novo**. Envia à lixeira o que o último plano marcou. `--delete` vai **na mesma linha**:
+Troque o caminho pela pasta que você quer varrer. No Git Bash use `C:/...`; no PowerShell pode ser `C:\...`. `--delete` e `--all-files` vão **na mesma linha**.
 
-```bash
-dupcheck --delete
-```
+| O que você quer | Comando |
+| --- | --- |
+| Abrir a janela | `dupcheck --gui` |
+| Janela já na pasta | `dupcheck --gui "C:/Users/SEU_USUARIO/Pictures"` |
+| Analisar imagens (exact + visual, padrão) | `dupcheck "C:/Users/SEU_USUARIO/Pictures"` |
+| Só cópias idênticas (imagens) | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact` |
+| Só imagens parecidas (pHash) | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual` |
+| Visual mais restrito | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual --threshold 4` |
+| Exact + visual no mesmo run | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact visual` |
+| SHA-256 em **qualquer** arquivo (PDF, DOCX, …) | `dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact --all-files` |
+| Exact em tudo + visual só nas fotos | `dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact visual --all-files` |
+| Enviar à lixeira o **último plano** (sem analisar de novo) | `dupcheck --delete` |
+| Analisar e mandar à lixeira no mesmo passo | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --delete` |
+| Sem perguntar confirmação | `dupcheck "C:/Users/SEU_USUARIO/Pictures" -y` |
+| Atalho antigo de `--method exact` | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --exact-only` |
 
-Confirme quando ele perguntar. Os arquivos vão para a **Lixeira**, não são apagados de vez.
+O primeiro `dupcheck "pasta"` **só analisa** e grava um plano. Ele mostra quantos arquivos achou, um tempo estimado, os grupos `MANTER` / `DELETAR` e o espaço recuperável (exatas vs visuais). Nada vai para a lixeira até `dupcheck --delete` (ou o botão na GUI).
 
-#### Sem ativar o venv
+#### Sem ativar o venv (só terminal)
 
 Git Bash, na pasta do projeto:
 
@@ -221,6 +258,7 @@ Git Bash, na pasta do projeto:
 .venv/Scripts/python.exe -m pip install -e .
 .venv/Scripts/dupcheck.exe "C:/Users/SEU_USUARIO/Pictures"
 .venv/Scripts/dupcheck.exe --delete
+.venv/Scripts/dupcheck.exe --gui
 ```
 
 PowerShell:
@@ -230,60 +268,7 @@ PowerShell:
 .\.venv\Scripts\python.exe -m pip install -e .
 .\.venv\Scripts\dupcheck.exe "C:\Users\SEU_USUARIO\Pictures"
 .\.venv\Scripts\dupcheck.exe --delete
-```
-
-### Outros comandos úteis
-
-Analisar e enviar à lixeira no mesmo passo:
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures" --delete
-```
-
-Pular as perguntas:
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures" -y
-dupcheck --delete -y
-```
-
-Só cópias **idênticas** (SHA-256), sem pHash — ainda só **imagens**:
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact
-```
-
-SHA-256 em **qualquer tipo de arquivo** (PDF, DOCX, ZIP, txt, etc.):
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact --all-files
-```
-
-`--all-files` entra na mesma linha. O `visual` continua valendo **apenas para imagens**, mesmo se você misturar os métodos:
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact visual --all-files
-```
-
-Só imagens **parecidas** (pHash). `--threshold` só vale neste método:
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual
-dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual --threshold 4
-```
-
-Os dois métodos no mesmo comando (padrão, se você omitir `--method`):
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact visual
-```
-
-No final o terminal mostra o tamanho analisado e o espaço marcado para a lixeira **separado por método** (exatas vs visuais) e o total.
-
-Atalho antigo, equivalente a `--method exact`:
-
-```bash
-dupcheck "C:/Users/SEU_USUARIO/Pictures" --exact-only
+.\.venv\Scripts\dupcheck.exe --gui
 ```
 
 ### Se algo falhar
@@ -294,6 +279,7 @@ dupcheck "C:/Users/SEU_USUARIO/Pictures" --exact-only
 | `venv: command not found` | `venv` não é um comando | Use `python -m venv .venv` |
 | `Activate.ps1` bloqueado | Política do PowerShell | `Set-ExecutionPolicy` (só PowerShell) **ou** use Git Bash |
 | `dupcheck: command not found` | venv inativo | `source .venv/Scripts/activate` (Git Bash) ou o `.exe` do passo 5 |
+| `dupcheck-gui: command not found` | venv inativo ou install antigo | Ative o venv e rode de novo `python -m pip install -e .` |
 | `bash: --delete: command not found` | `--delete` numa linha sozinha | `dupcheck --delete` **junto**, um único comando |
 | `pip` instala mas `dupcheck` não existe | `pip` do sistema, não do venv | Com o venv ativo: `python -m pip install -e .` |
 
@@ -310,6 +296,7 @@ python -m pytest
 
 | Opção | Função |
 | --- | --- |
+| `--gui` | Abre a janela. Equivalente: `dupcheck-gui` |
 | `--delete` | Sem pasta: aplica o último plano. Com pasta: analisa e envia à lixeira |
 | `--method exact` / `visual` | Um ou os dois. Padrão: `exact visual` |
 | `--all-files` | No `exact`, inclui PDF, DOCX e qualquer outro arquivo (não só imagens) |

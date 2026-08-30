@@ -24,6 +24,7 @@ dev = ["pytest>=8.0.0"]
 
 [project.scripts]
 dupcheck = "duplicate_verifier.cli:main"
+dupcheck-gui = "duplicate_verifier.gui:run_app_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
