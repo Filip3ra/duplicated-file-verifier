@@ -3,3 +3,4 @@ numpy>=1.26.0
 scipy>=1.11.0
 ImageHash>=4.3.1
 tqdm>=4.66.0
+Send2Trash>=1.8.0

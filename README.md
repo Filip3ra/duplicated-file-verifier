@@ -70,24 +70,33 @@ pip install -e ".[dev]"
 
 ## Uso
 
-Simulação (recomendado na primeira vez) — mostra o que seria apagado, sem apagar:
+Dois passos. Primeiro analisa e **grava um plano** (nada vai para a lixeira):
 
 ```powershell
 dupcheck "C:\caminho\para\fotos"
 ```
 
-Você verá primeiro quantas imagens existem e o tempo estimado, e poderá confirmar antes da análise.
+Você verá quantas imagens existem, o tempo estimado, e os grupos MANTER / DELETAR.
 
-Apagar de fato as cópias de menor qualidade (pede confirmação extra):
+Se a lista estiver certa, envie só o que já foi marcado — **sem analisar de novo**:
+
+```powershell
+dupcheck --delete
+```
+
+`--delete` vai **na mesma linha**. O comando mostra o último plano e pede confirmação antes de mandar para a lixeira.
+
+Ainda dá para analisar e enviar num passo só:
 
 ```powershell
 dupcheck "C:\caminho\para\fotos" --delete
 ```
 
-Pular as perguntas (útil em script; **cuidado** com `--delete`):
+Pular as perguntas (útil em script):
 
 ```powershell
-dupcheck "C:\caminho\para\fotos" --delete -y
+dupcheck "C:\caminho\para\fotos" -y
+dupcheck --delete -y
 ```
 
 Só duplicatas idênticas, sem hash perceptual (mais rápido):
@@ -106,7 +115,7 @@ python -m duplicate_verifier "C:\caminho\para\fotos"
 
 | Opção | Função |
 | --- | --- |
-| `--delete` | Remove os arquivos marcados como DELETAR |
+| `--delete` | Sem pasta: aplica o último plano. Com pasta: analisa e envia à lixeira |
 | `--exact-only` | Apenas SHA-256, sem comparação visual |
 | `--threshold N` | Quão parecidas as fotos precisam ser (padrão: 8). Aumente se faltar match; diminua se juntar fotos diferentes |
 | `--workers N` | Processos em paralelo para hashing |
@@ -124,7 +133,7 @@ Grupo 1 — duplicatas visuais (distância perceptual até 4)
   DELETAR  compressed.jpg   1920x1080    340.00 KB
 ```
 
-`MANTER` é a melhor versão do grupo. `DELETAR` são as que o modo `--delete` removeria. Distância perceptual 0 costuma ser a mesma imagem; valores até o `--threshold` ainda entram como “a mesma foto”.
+`MANTER` é a melhor versão do grupo. `DELETAR` são as que `dupcheck --delete` enviaria à lixeira. Distância perceptual 0 costuma ser a mesma imagem; valores até o `--threshold` ainda entram como “a mesma foto”.
 
 ## Testes
 

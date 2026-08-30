@@ -16,6 +16,7 @@ dependencies = [
     "scipy>=1.11.0",
     "ImageHash>=4.3.1",
     "tqdm>=4.66.0",
+    "Send2Trash>=1.8.0",
 ]
 
 [project.optional-dependencies]
