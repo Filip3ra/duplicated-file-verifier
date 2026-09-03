@@ -8,8 +8,14 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from duplicate_verifier.actions import send_marked_to_trash
-from duplicate_verifier.constants import DEFAULT_HAMMING_THRESHOLD, METHOD_EXACT, METHOD_VISUAL, PHASH_BITS
-from duplicate_verifier.estimate import format_bytes, format_duration
+from duplicate_verifier.constants import (
+    DEFAULT_HAMMING_THRESHOLD,
+    METHOD_EXACT,
+    METHOD_VISUAL,
+    PHASH_BITS,
+    is_image_path,
+)
+from duplicate_verifier.estimate import estimate_seconds, format_bytes, format_duration
 from duplicate_verifier.models import AnalysisResult, DuplicateGroup, GroupKind, ImageFile, ScanStats
 from duplicate_verifier.pipeline import analyze
 from duplicate_verifier.plan import save_plan
@@ -52,9 +58,15 @@ class DupcheckApp(tk.Tk):
         self.visual_var = tk.BooleanVar(value=True)
         self.threshold_var = tk.IntVar(value=DEFAULT_HAMMING_THRESHOLD)
         self.status_var = tk.StringVar(value="Escolha uma pasta e clique em Analisar.")
+        self._preview_stats: ScanStats | None = None
+        self._preview_seq = 0
+        self.preview_var = tk.StringVar(value="Selecione uma pasta para ver o total de arquivos e o tempo estimado.")
+        self.trash_count_var = tk.StringVar(value="")
 
         self._build()
         self._sync_threshold_state()
+        if self.folder_var.get().strip():
+            self._start_preview()
 
     def _build(self) -> None:
         pad = {"padx": 8, "pady": 4}
@@ -71,13 +83,14 @@ class DupcheckApp(tk.Tk):
 
         ttk.Label(options, text="Escopo:").grid(row=0, column=0, sticky=tk.W)
         ttk.Radiobutton(
-            options, text="Só imagens", variable=self.scope_var, value="images"
+            options, text="Só imagens", variable=self.scope_var, value="images", command=self._start_preview
         ).grid(row=0, column=1, sticky=tk.W, padx=6)
         ttk.Radiobutton(
             options,
             text="Todos os arquivos (PDF, DOCX, etc. — só no SHA-256)",
             variable=self.scope_var,
             value="all",
+            command=self._start_preview,
         ).grid(row=0, column=2, sticky=tk.W, padx=6)
 
         ttk.Label(options, text="Métodos:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
@@ -85,12 +98,13 @@ class DupcheckApp(tk.Tk):
             options,
             text="Cópias exatas (SHA-256)",
             variable=self.exact_var,
+            command=self._refresh_preview_estimate,
         ).grid(row=1, column=1, sticky=tk.W, padx=6, pady=(8, 0))
         visual = ttk.Checkbutton(
             options,
             text="Cópias visuais (pHash, só imagens)",
             variable=self.visual_var,
-            command=self._sync_threshold_state,
+            command=self._on_visual_toggle,
         )
         visual.grid(row=1, column=2, sticky=tk.W, padx=6, pady=(8, 0))
 
@@ -105,7 +119,7 @@ class DupcheckApp(tk.Tk):
         self.threshold_spin.grid(row=2, column=1, sticky=tk.W, padx=6, pady=(8, 0))
         ttk.Label(
             options,
-            text="0 = hashes iguais; padrão 8; maior = mais permissivo",
+            text="0 = imagens iguais;  1 = imagens muito parecidas;  2 = imagens um pouco parecidas",
         ).grid(row=2, column=2, sticky=tk.W, padx=6, pady=(8, 0))
 
         buttons = ttk.Frame(self, padding=(10, 0))
@@ -115,7 +129,9 @@ class DupcheckApp(tk.Tk):
         self.trash_btn = ttk.Button(
             buttons, text="Enviar cópias à lixeira", command=self._confirm_trash, state=tk.DISABLED
         )
-        self.trash_btn.pack(side=tk.LEFT)
+        self.trash_btn.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(buttons, textvariable=self.preview_var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Label(buttons, textvariable=self.trash_count_var).pack(side=tk.RIGHT, padx=(8, 0))
         self.progress = ttk.Progressbar(buttons, mode="indeterminate", length=180)
         self.progress.pack(side=tk.RIGHT)
 
@@ -148,6 +164,10 @@ class DupcheckApp(tk.Tk):
 
         ttk.Label(self, textvariable=self.status_var, padding=(10, 6)).pack(fill=tk.X)
 
+    def _on_visual_toggle(self) -> None:
+        self._sync_threshold_state()
+        self._refresh_preview_estimate()
+
     def _sync_threshold_state(self) -> None:
         state = tk.NORMAL if self.visual_var.get() else tk.DISABLED
         self.threshold_spin.configure(state=state)
@@ -157,6 +177,65 @@ class DupcheckApp(tk.Tk):
         chosen = filedialog.askdirectory(initialdir=current or None, title="Pasta para analisar")
         if chosen:
             self.folder_var.set(chosen)
+            self._start_preview()
+
+    def _start_preview(self) -> None:
+        if self._busy:
+            return
+        folder = self.folder_var.get().strip()
+        if not folder:
+            self._preview_stats = None
+            self.preview_var.set("Selecione uma pasta para ver o total de arquivos e o tempo estimado.")
+            return
+        root = Path(folder)
+        if not root.is_dir():
+            self._preview_stats = None
+            self.preview_var.set("Pasta inválida.")
+            return
+        all_files = self.scope_var.get() == "all"
+        self._preview_seq += 1
+        seq = self._preview_seq
+        self.preview_var.set("Contando arquivos…")
+
+        def work() -> None:
+            try:
+                stats = scan_files(root, all_files=all_files)
+            except Exception as exc:  # noqa: BLE001
+                self.after(0, lambda error=exc, token=seq: self._on_preview_error(token, error))
+                return
+            self.after(0, lambda token=seq: self._on_preview_done(token, stats))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_preview_error(self, token: int, error: Exception) -> None:
+        if token != self._preview_seq:
+            return
+        self.preview_var.set(f"Não foi possível listar a pasta: {error}")
+
+    def _on_preview_done(self, token: int, stats: ScanStats) -> None:
+        if token != self._preview_seq:
+            return
+        self._preview_stats = stats
+        self._refresh_preview_estimate()
+
+    def _refresh_preview_estimate(self) -> None:
+        stats = self._preview_stats
+        if stats is None:
+            return
+        methods = methods_from_toggles(exact=self.exact_var.get(), visual=self.visual_var.get())
+        include_visual = METHOD_VISUAL in methods
+        image_count = sum(1 for item in stats.files if is_image_path(item.path))
+        estimated = estimate_seconds(
+            stats.total_files,
+            stats.total_bytes,
+            include_visual=include_visual,
+            visual_count=image_count if include_visual else 0,
+        )
+        noun = "arquivo(s)" if self.scope_var.get() == "all" else "imagem(ns)"
+        self.preview_var.set(
+            f"{stats.total_files} {noun}  |  {format_bytes(stats.total_bytes)}  |  "
+            f"tempo estimado: {format_duration(estimated)}"
+        )
 
     def _start_analysis(self) -> None:
         if self._busy:
@@ -183,6 +262,7 @@ class DupcheckApp(tk.Tk):
         self._busy = True
         self.analyze_btn.configure(state=tk.DISABLED)
         self.trash_btn.configure(state=tk.DISABLED)
+        self.trash_count_var.set("")
         self.progress.start(12)
         self.status_var.set("Analisando… a janela pode levar um tempo em pastas grandes.")
         self.summary.configure(text="")
@@ -214,6 +294,8 @@ class DupcheckApp(tk.Tk):
     def _on_analysis_done(self, stats: ScanStats, result: AnalysisResult) -> None:
         self._stats = stats
         self._result = result
+        self._preview_stats = stats
+        self._refresh_preview_estimate()
         self._finish_busy()
         self._fill_table(stats, result)
         summary = _summary_text(stats, result)
@@ -232,10 +314,12 @@ class DupcheckApp(tk.Tk):
                 f"{marked} arquivo(s) marcados. Duplo clique abre a pasta do arquivo."
             )
 
-    def _finish_busy(self) -> None:
+    def _finish_busy(self, *, clear_trash_count: bool = True) -> None:
         self._busy = False
         self.progress.stop()
         self.analyze_btn.configure(state=tk.NORMAL)
+        if clear_trash_count:
+            self.trash_count_var.set("")
 
     def _clear_table(self) -> None:
         for item in self.tree.get_children():
@@ -305,19 +389,50 @@ class DupcheckApp(tk.Tk):
             "Dá para restaurar pela Lixeira do Windows.",
         ):
             return
-        result = send_marked_to_trash(to_delete)
+
+        self._busy = True
+        self.analyze_btn.configure(state=tk.DISABLED)
+        self.trash_btn.configure(state=tk.DISABLED)
+        self.progress.start(12)
+        total_files = len(to_delete)
+        self.trash_count_var.set(f"0/{total_files}")
+        self.status_var.set(f"Enviando à lixeira: 0/{total_files}")
+
+        def work() -> None:
+            def on_progress(done: int, total_count: int) -> None:
+                self.after(0, lambda d=done, t=total_count: self._on_trash_progress(d, t))
+
+            trash_result = send_marked_to_trash(to_delete, on_progress=on_progress)
+            self.after(0, lambda: self._on_trash_done(trash_result, total_files))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_trash_progress(self, done: int, total: int) -> None:
+        self.trash_count_var.set(f"{done}/{total}")
+        self.status_var.set(f"Enviando à lixeira: {done}/{total}")
+
+    def _on_trash_done(self, result, total_files: int) -> None:
+        self._finish_busy(clear_trash_count=False)
+        self.trash_count_var.set(f"{result.deleted}/{total_files}")
         extra = "\n".join(result.messages[:8])
         if result.messages[8:]:
             extra += f"\n… (+{len(result.messages) - 8})"
         messagebox.showinfo(
             "Lixeira",
-            f"Enviados: {result.deleted}\nIgnorados: {result.skipped}\nFalhas: {result.failures}"
+            f"Enviados: {result.deleted}/{total_files}\nIgnorados: {result.skipped}\nFalhas: {result.failures}"
             + (f"\n\n{extra}" if extra else ""),
         )
         if result.deleted:
             self.trash_btn.configure(state=tk.DISABLED)
-            self.status_var.set("Cópias enviadas à lixeira. Rode Analisar de novo se quiser conferir.")
+            self.status_var.set(
+                f"Lixeira: {result.deleted}/{total_files} enviados. "
+                "Rode Analisar de novo se quiser conferir."
+            )
             self._result = None
+        else:
+            marked = self._result.reclaimable_count() if self._result else 0
+            self.trash_btn.configure(state=tk.NORMAL if marked else tk.DISABLED)
+            self.status_var.set("Nenhum arquivo foi para a lixeira.")
 
 
 def _summary_text(stats: ScanStats, result: AnalysisResult) -> str:

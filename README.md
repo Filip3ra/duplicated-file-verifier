@@ -238,7 +238,8 @@ Troque o caminho pela pasta que você quer varrer. No Git Bash use `C:/...`; no 
 | Analisar imagens (exact + visual, padrão) | `dupcheck "C:/Users/SEU_USUARIO/Pictures"` |
 | Só cópias idênticas (imagens) | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact` |
 | Só imagens parecidas (pHash) | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual` |
-| Visual mais restrito | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual --threshold 4` |
+| Visual mais restrito (só iguais) | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual --threshold 0` |
+| Visual um pouco mais aberto | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method visual --threshold 2` |
 | Exact + visual no mesmo run | `dupcheck "C:/Users/SEU_USUARIO/Pictures" --method exact visual` |
 | SHA-256 em **qualquer** arquivo (PDF, DOCX, …) | `dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact --all-files` |
 | Exact em tudo + visual só nas fotos | `dupcheck "C:/Users/SEU_USUARIO/Documentos" --method exact visual --all-files` |
@@ -301,7 +302,7 @@ python -m pytest
 | `--method exact` / `visual` | Um ou os dois. Padrão: `exact visual` |
 | `--all-files` | No `exact`, inclui PDF, DOCX e qualquer outro arquivo (não só imagens) |
 | `--exact-only` | Atalho de `--method exact` |
-| `--threshold N` | Só no visual: distância máxima de Hamming (padrão 8). **0** = hashes iguais; **maior** = aceita fotos mais diferentes |
+| `--threshold N` | Só no visual. Padrão **1**. **0** = iguais; **1** = muito parecidas; **2** = um pouco parecidas |
 | `--workers N` | Processos em paralelo para hashing |
 | `-y` / `--yes` | Não pergunta confirmação |
 | `--include-hidden` | Inclui pastas e arquivos que começam com `.` |
@@ -329,15 +330,16 @@ A **distância de Hamming** é quantos desses 64 bits diferem:
 
 | Valor | Significado |
 | --- | --- |
-| **0** | Hashes iguais — quase certamente a mesma imagem |
-| **1–8** | Muito parecidas (compressão, redimensionar leve). **8 é o padrão** |
-| **12–16** | Mais permissivo: pode juntar fotos só semelhantes e gerar falso positivo |
-| **64** | Todos os bits diferentes — imagens sem relação |
+| **0** | Imagens iguais |
+| **1** | Imagens muito parecidas (**padrão**) |
+| **2** | Imagens um pouco parecidas |
+| **maior** | Mais permissivo; aumenta o risco de juntar fotos que não são a mesma |
 
 `--threshold N` é o **teto**: entram no mesmo grupo pares com distância **≤ N**.
 
-- **Baixar** (ex.: 4) → mais restrito, menos grupos, menos risco de misturar fotos diferentes  
-- **Subir** (ex.: 12) → mais grupos, mais chance de achar a mesma foto muito reencodada, e de juntar coisa que não é cópia  
+- **0** → só imagens iguais  
+- **1** (padrão) → muito parecidas  
+- **2 ou mais** → aceita pares um pouco (ou bem) diferentes; sobe o risco de falso positivo
 
 O método `exact` ignora isso: só entra arquivo com os **mesmos bytes** (SHA-256). Uma foto salva de novo em JPEG **não** é exact.
 

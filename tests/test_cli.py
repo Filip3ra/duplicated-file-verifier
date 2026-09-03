@@ -20,7 +20,9 @@ def test_cli_dry_run_reports_visual_duplicate(tmp_path: Path, capsys) -> None:
     save_image(tmp_path / "copy.jpg", scene_keep(160), quality=30)
     save_image(tmp_path / "other.png", scene_other(320))
 
-    code = main([str(tmp_path), "-y", "--no-color", "--quiet", "--workers", "1"])
+    code = main(
+        [str(tmp_path), "-y", "--no-color", "--quiet", "--workers", "1", "--threshold", "8"]
+    )
     out = capsys.readouterr().out
 
     assert code == 0
@@ -53,7 +55,7 @@ def test_cli_delete_sends_copies_to_trash(tmp_path: Path, capsys, monkeypatch) -
     save_image(tmp_path / "other.png", scene_other(320))
 
     code = main(
-        [str(tmp_path), "--delete", "-y", "--no-color", "--quiet", "--workers", "1"]
+        [str(tmp_path), "--delete", "-y", "--no-color", "--quiet", "--workers", "1", "--threshold", "8"]
     )
     out = capsys.readouterr().out
 
@@ -77,7 +79,9 @@ def test_cli_delete_applies_last_plan_without_rescan(tmp_path: Path, capsys, mon
     save_image(tmp_path / "copy.jpg", scene_keep(160), quality=30)
     save_image(tmp_path / "other.png", scene_other(320))
 
-    assert main([str(tmp_path), "-y", "--no-color", "--quiet", "--workers", "1"]) == 0
+    assert main(
+        [str(tmp_path), "-y", "--no-color", "--quiet", "--workers", "1", "--threshold", "8"]
+    ) == 0
     capsys.readouterr()
     assert (tmp_path / "copy.jpg").exists()
 

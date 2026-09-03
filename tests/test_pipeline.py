@@ -18,7 +18,7 @@ def test_pipeline_keeps_higher_quality_visual_duplicate(tmp_path: Path) -> None:
     save_image(other, scene_other(320))
 
     stats = scan_images(tmp_path)
-    result = analyze(stats.files, workers=1, progress=False)
+    result = analyze(stats.files, workers=1, progress=False, threshold=8)
 
     assert len(result.groups) == 1
     group = result.groups[0]
@@ -52,7 +52,7 @@ def test_pipeline_splits_exact_and_visual_when_both_methods(tmp_path: Path) -> N
     save_image(other, scene_other(320))
 
     stats = scan_images(tmp_path)
-    result = analyze(stats.files, workers=1, progress=False, methods=["exact", "visual"])
+    result = analyze(stats.files, workers=1, progress=False, methods=["exact", "visual"], threshold=8)
 
     kinds = {group.kind for group in result.groups}
     assert GroupKind.EXACT in kinds

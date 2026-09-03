@@ -199,8 +199,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help=(
             "Só no método visual: distância de Hamming máxima "
-            f"(0 = hashes iguais; padrão {DEFAULT_HAMMING_THRESHOLD}; "
-            f"máximo prático {PHASH_BITS}). Quanto maior, mais imagens diferentes entram"
+            f"(0 = imagens iguais; 1 = muito parecidas, padrão; 2 = um pouco parecidas; "
+            f"máximo prático {PHASH_BITS})"
         ),
     )
     parser.add_argument(
@@ -281,10 +281,10 @@ def _print_inventory(
     if METHOD_VISUAL in methods:
         print()
         print("Distância visual (Hamming do pHash de 64 bits):")
-        print("  0  = hashes iguais (quase certamente a mesma foto)")
-        print(f"  {threshold}  = limite desta varredura (valores até aqui entram no mesmo grupo)")
-        print(f"  {PHASH_BITS} = imagens totalmente diferentes")
-        print("  Quanto menor o limite, mais restrito; quanto maior, mais 'parecido' entra.")
+        print("  0 = imagens iguais")
+        print("  1 = imagens muito parecidas (padrão)")
+        print("  2 = imagens um pouco parecidas")
+        print(f"  Limite desta varredura: {threshold} (entra no grupo quem tiver distância ≤ esse valor)")
     print()
     print(f"Tempo estimado de execução: {format_duration(estimated)}")
     print(f"{dim}  (estimativa conservadora; o tempo real aparece ao final){reset}")

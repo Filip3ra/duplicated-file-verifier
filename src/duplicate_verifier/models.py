@@ -68,7 +68,7 @@ class AnalysisResult:
     unique_contents: int
     elapsed_seconds: float
     methods: tuple[str, ...] = ("exact", "visual")
-    threshold: int = 8
+    threshold: int = 1
 
     def reclaimable_bytes(self, kind: GroupKind | None = None) -> int:
         groups = self.groups if kind is None else [g for g in self.groups if g.kind is kind]
