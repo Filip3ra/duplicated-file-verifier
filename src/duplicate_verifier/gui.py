@@ -243,7 +243,7 @@ class DupcheckApp(tk.Tk):
         self.ext_menu.add_command(label="Marcar todas", command=self._select_all_extensions)
         self.ext_menu.add_command(label="Desmarcar todas", command=self._clear_all_extensions)
         self.ext_menu.add_separator()
-        for ext, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+        for ext, count in sorted(counts.items(), key=lambda item: item[0].lower()):
             var = tk.BooleanVar(value=previous.get(ext, True))
             self._ext_vars[ext] = var
             self.ext_menu.add_checkbutton(
