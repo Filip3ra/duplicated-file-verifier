@@ -19,7 +19,11 @@ from duplicate_verifier.estimate import estimate_seconds, format_bytes, format_d
 from duplicate_verifier.models import AnalysisResult, DuplicateGroup, GroupKind, ImageFile, ScanStats
 from duplicate_verifier.pipeline import analyze
 from duplicate_verifier.plan import save_plan
-from duplicate_verifier.scanner import scan_files
+from duplicate_verifier.scanner import filter_files_by_extensions, scan_files
+
+
+def selected_extension_labels(ext_vars: dict[str, tk.BooleanVar]) -> frozenset[str]:
+    return frozenset(ext for ext, var in ext_vars.items() if var.get())
 
 
 def methods_from_toggles(*, exact: bool, visual: bool) -> tuple[str, ...]:
@@ -62,6 +66,7 @@ class DupcheckApp(tk.Tk):
         self._preview_seq = 0
         self.preview_var = tk.StringVar(value="Selecione uma pasta para ver o total de arquivos e o tempo estimado.")
         self.trash_count_var = tk.StringVar(value="")
+        self._ext_vars: dict[str, tk.BooleanVar] = {}
 
         self._build()
         self._sync_threshold_state()
@@ -121,6 +126,12 @@ class DupcheckApp(tk.Tk):
             options,
             text="0 = imagens iguais;  1 = imagens muito parecidas;  2 = imagens um pouco parecidas",
         ).grid(row=2, column=2, sticky=tk.W, padx=6, pady=(8, 0))
+
+        ttk.Label(options, text="Extensões:").grid(row=3, column=0, sticky=tk.W, pady=(8, 0))
+        self.ext_menu_btn = ttk.Menubutton(options, text="Selecione uma pasta", state=tk.DISABLED)
+        self.ext_menu = tk.Menu(self.ext_menu_btn, tearoff=0)
+        self.ext_menu_btn["menu"] = self.ext_menu
+        self.ext_menu_btn.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=6, pady=(8, 0))
 
         buttons = ttk.Frame(self, padding=(10, 0))
         buttons.pack(fill=tk.X)
@@ -185,11 +196,13 @@ class DupcheckApp(tk.Tk):
         folder = self.folder_var.get().strip()
         if not folder:
             self._preview_stats = None
+            self._rebuild_extension_menu({})
             self.preview_var.set("Selecione uma pasta para ver o total de arquivos e o tempo estimado.")
             return
         root = Path(folder)
         if not root.is_dir():
             self._preview_stats = None
+            self._rebuild_extension_menu({})
             self.preview_var.set("Pasta inválida.")
             return
         all_files = self.scope_var.get() == "all"
@@ -216,24 +229,88 @@ class DupcheckApp(tk.Tk):
         if token != self._preview_seq:
             return
         self._preview_stats = stats
+        self._rebuild_extension_menu(stats.extension_counts)
         self._refresh_preview_estimate()
+
+    def _rebuild_extension_menu(self, counts: dict[str, int]) -> None:
+        previous = {ext: var.get() for ext, var in self._ext_vars.items()}
+        self.ext_menu.delete(0, tk.END)
+        self._ext_vars = {}
+        if not counts:
+            self.ext_menu.add_command(label="Nenhuma extensão encontrada", state=tk.DISABLED)
+            self.ext_menu_btn.configure(text="Nenhuma extensão", state=tk.DISABLED)
+            return
+        self.ext_menu.add_command(label="Marcar todas", command=self._select_all_extensions)
+        self.ext_menu.add_command(label="Desmarcar todas", command=self._clear_all_extensions)
+        self.ext_menu.add_separator()
+        for ext, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+            var = tk.BooleanVar(value=previous.get(ext, True))
+            self._ext_vars[ext] = var
+            self.ext_menu.add_checkbutton(
+                label=f"{ext}  ({count})",
+                variable=var,
+                command=self._on_extension_toggle,
+            )
+        self.ext_menu_btn.configure(state=tk.NORMAL)
+        self._update_ext_button_label()
+
+    def _select_all_extensions(self) -> None:
+        for var in self._ext_vars.values():
+            var.set(True)
+        self._on_extension_toggle()
+
+    def _clear_all_extensions(self) -> None:
+        for var in self._ext_vars.values():
+            var.set(False)
+        self._on_extension_toggle()
+
+    def _on_extension_toggle(self) -> None:
+        self._update_ext_button_label()
+        self._refresh_preview_estimate()
+
+    def _update_ext_button_label(self) -> None:
+        total = len(self._ext_vars)
+        if total == 0:
+            self.ext_menu_btn.configure(text="Nenhuma extensão")
+            return
+        selected = selected_extension_labels(self._ext_vars)
+        if len(selected) == total:
+            self.ext_menu_btn.configure(text=f"Todas ({total})")
+            return
+        if not selected:
+            self.ext_menu_btn.configure(text="Nenhuma selecionada")
+            return
+        preview = ", ".join(sorted(selected)[:4])
+        extra = "" if len(selected) <= 4 else f" +{len(selected) - 4}"
+        self.ext_menu_btn.configure(text=f"{preview}{extra}  ({len(selected)}/{total})")
+
+    def _selected_files_for_preview(self) -> list[ImageFile]:
+        stats = self._preview_stats
+        if stats is None:
+            return []
+        allowed = selected_extension_labels(self._ext_vars)
+        if not self._ext_vars:
+            return list(stats.files)
+        return filter_files_by_extensions(stats.files, allowed)
 
     def _refresh_preview_estimate(self) -> None:
         stats = self._preview_stats
         if stats is None:
             return
+        files = self._selected_files_for_preview()
+        total_bytes = sum(item.size_bytes for item in files)
         methods = methods_from_toggles(exact=self.exact_var.get(), visual=self.visual_var.get())
         include_visual = METHOD_VISUAL in methods
-        image_count = sum(1 for item in stats.files if is_image_path(item.path))
+        image_count = sum(1 for item in files if is_image_path(item.path))
         estimated = estimate_seconds(
-            stats.total_files,
-            stats.total_bytes,
+            len(files),
+            total_bytes,
             include_visual=include_visual,
             visual_count=image_count if include_visual else 0,
         )
         noun = "arquivo(s)" if self.scope_var.get() == "all" else "imagem(ns)"
         self.preview_var.set(
-            f"{stats.total_files} {noun}  |  {format_bytes(stats.total_bytes)}  |  "
+            f"{len(files)} {noun}  |  {format_bytes(total_bytes)}  |  "
             f"tempo estimado: {format_duration(estimated)}"
         )
 
@@ -258,6 +335,10 @@ class DupcheckApp(tk.Tk):
             threshold = DEFAULT_HAMMING_THRESHOLD
         threshold = max(0, min(PHASH_BITS, threshold))
         all_files = self.scope_var.get() == "all"
+        allowed = selected_extension_labels(self._ext_vars)
+        if self._ext_vars and not allowed:
+            messagebox.showwarning("Extensões", "Marque pelo menos uma extensão para analisar.")
+            return
 
         self._busy = True
         self.analyze_btn.configure(state=tk.DISABLED)
@@ -270,7 +351,11 @@ class DupcheckApp(tk.Tk):
 
         def work() -> None:
             try:
-                stats = scan_files(root, all_files=all_files)
+                stats = scan_files(
+                    root,
+                    all_files=all_files,
+                    allowed_extensions=allowed or None,
+                )
                 result = analyze(
                     stats.files,
                     threshold=threshold,

@@ -7,7 +7,7 @@ from duplicate_verifier.grouping import cluster_hashes
 from duplicate_verifier.hashing import hamming_distance
 from duplicate_verifier.models import ImageFile
 from duplicate_verifier.quality import pick_keep
-from duplicate_verifier.scanner import scan_files, scan_images
+from duplicate_verifier.scanner import filter_files_by_extensions, scan_files, scan_images
 
 
 def test_format_duration_and_bytes() -> None:
@@ -81,3 +81,22 @@ def test_scanner_all_files_includes_documents(tmp_path: Path) -> None:
     names = {item.path.name for item in stats.files}
     assert names == {"a.pdf", "a.docx", "a copy.pdf"}
     assert "lib.js" not in names
+
+
+def test_scanner_allowed_extensions_filters_types(tmp_path: Path) -> None:
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-fake")
+    (tmp_path / "a.docx").write_bytes(b"PK-fake")
+    (tmp_path / "photo.png").write_bytes(b"png-bytes")
+    stats = scan_files(tmp_path, all_files=True, allowed_extensions=frozenset({".pdf", ".docx"}))
+    names = {item.path.name for item in stats.files}
+    assert names == {"a.pdf", "a.docx"}
+
+
+def test_filter_files_by_extensions() -> None:
+    files = [
+        ImageFile(path=Path("a.pdf"), size_bytes=1),
+        ImageFile(path=Path("b.png"), size_bytes=2),
+        ImageFile(path=Path("readme"), size_bytes=3),
+    ]
+    kept = filter_files_by_extensions(files, frozenset({".pdf", "(sem extensão)"}))
+    assert [item.path.name for item in kept] == ["a.pdf", "readme"]

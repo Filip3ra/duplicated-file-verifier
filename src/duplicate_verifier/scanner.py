@@ -8,6 +8,15 @@ from duplicate_verifier.constants import IMAGE_EXTENSIONS, SKIP_DIRECTORY_NAMES
 from duplicate_verifier.models import ImageFile, ScanStats
 
 
+def extension_label(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return suffix or "(sem extensão)"
+
+
+def filter_files_by_extensions(files: list[ImageFile], allowed: frozenset[str]) -> list[ImageFile]:
+    return [item for item in files if extension_label(item.path) in allowed]
+
+
 def scan_images(
     root: Path,
     *,
@@ -32,6 +41,7 @@ def scan_files(
     include_hidden: bool = False,
     all_files: bool = False,
     extensions: frozenset[str] = IMAGE_EXTENSIONS,
+    allowed_extensions: frozenset[str] | None = None,
 ) -> ScanStats:
     """Walk ``root`` recursively and collect files (metadata only)."""
     root = root.resolve()
@@ -71,7 +81,11 @@ def scan_files(
                         continue
 
                     suffix = Path(name).suffix.lower()
-                    if not all_files and suffix not in extensions:
+                    ext_key = suffix or "(sem extensão)"
+                    if allowed_extensions is not None:
+                        if ext_key not in allowed_extensions:
+                            continue
+                    elif not all_files and suffix not in extensions:
                         continue
                     try:
                         size = entry.stat(follow_symlinks=follow_symlinks).st_size
@@ -81,7 +95,7 @@ def scan_files(
                     if size <= 0:
                         continue
                     files.append(ImageFile(path=Path(entry.path), size_bytes=size))
-                    counts[suffix or "(sem extensão)"] += 1
+                    counts[ext_key] += 1
         except OSError:
             permission_errors += 1
 

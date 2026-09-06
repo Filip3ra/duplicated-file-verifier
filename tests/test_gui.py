@@ -1,15 +1,22 @@
 from pathlib import Path
 
 from duplicate_verifier.actions import send_marked_to_trash
-from duplicate_verifier.gui import methods_from_toggles
+from duplicate_verifier.gui import methods_from_toggles, selected_extension_labels
 from duplicate_verifier.models import ImageFile
 
 
-def test_methods_from_toggles() -> None:
-    assert methods_from_toggles(exact=True, visual=True) == ("exact", "visual")
-    assert methods_from_toggles(exact=True, visual=False) == ("exact",)
-    assert methods_from_toggles(exact=False, visual=True) == ("visual",)
-    assert methods_from_toggles(exact=False, visual=False) == ()
+def test_selected_extension_labels() -> None:
+    class Toggle:
+        def __init__(self, value: bool) -> None:
+            self._value = value
+
+        def get(self) -> bool:
+            return self._value
+
+    chosen = selected_extension_labels(
+        {".pdf": Toggle(True), ".png": Toggle(False), ".docx": Toggle(True)}  # type: ignore[arg-type]
+    )
+    assert chosen == frozenset({".pdf", ".docx"})
 
 
 def test_trash_progress_callback(tmp_path: Path, monkeypatch) -> None:
