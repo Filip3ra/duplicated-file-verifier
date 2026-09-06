@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -33,6 +34,35 @@ def methods_from_toggles(*, exact: bool, visual: bool) -> tuple[str, ...]:
     if visual:
         selected.append(METHOD_VISUAL)
     return tuple(selected)
+
+
+def windows_explorer_select_args(path: Path) -> list[str]:
+    """Build Explorer argv so a drive like ``E:\\file`` is not treated as relative.
+
+    ``explorer /select,E:\\folder\\file.jpg`` as one argument is parsed as a
+    path under the user Documents folder. ``/select,`` must be its own argv.
+    """
+    return ["explorer.exe", "/select,", os.path.normpath(path)]
+
+
+def reveal_in_file_manager(path: Path) -> None:
+    """Open the file manager with ``path`` selected, when the OS supports it."""
+    target = path.expanduser().resolve()
+    if sys.platform == "win32":
+        if target.exists():
+            subprocess.Popen(windows_explorer_select_args(target))
+            return
+        folder = target.parent if target.parent.exists() else target
+        os.startfile(os.path.normpath(folder))  # noqa: S606
+        return
+    if sys.platform == "darwin":
+        if target.exists():
+            subprocess.Popen(["open", "-R", str(target)])
+        else:
+            subprocess.Popen(["open", str(target.parent)])
+        return
+    folder = target.parent if target.is_file() else target
+    subprocess.Popen(["xdg-open", str(folder)])
 
 
 def run_app(initial_directory: str | Path | None = None) -> int:
@@ -396,7 +426,7 @@ class DupcheckApp(tk.Tk):
         else:
             self.status_var.set(
                 f"Concluído em {format_duration(result.elapsed_seconds)}. "
-                f"{marked} arquivo(s) marcados. Duplo clique abre a pasta do arquivo."
+                f"{marked} arquivo(s) marcados. Duplo clique abre a pasta com o arquivo selecionado."
             )
 
     def _finish_busy(self, *, clear_trash_count: bool = True) -> None:
@@ -449,14 +479,8 @@ class DupcheckApp(tk.Tk):
             return
         rel = self.tree.item(selected[0], "values")[2]
         path = self._stats.root / rel
-        folder = path.parent if path.exists() else self._stats.root
         try:
-            if sys.platform == "win32":
-                os.startfile(folder)  # noqa: S606
-            elif sys.platform == "darwin":
-                os.system(f'open "{folder}"')  # noqa: S605, S607
-            else:
-                os.system(f'xdg-open "{folder}"')  # noqa: S605, S607
+            reveal_in_file_manager(path)
         except OSError as exc:
             messagebox.showerror("Abrir pasta", str(exc))
 

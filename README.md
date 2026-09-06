@@ -213,7 +213,7 @@ Abrir já com uma pasta:
 dupcheck --gui "C:/Users/SEU_USUARIO/Pictures"
 ```
 
-Na tela: **Procurar** a pasta → conferir totais e o dropdown **Extensões** (todas marcadas; desmarque o que quiser ignorar) → **só imagens** ou **todos os arquivos** → marcar **cópias exatas** e/ou **visuais** → distância (se visual) → **Analisar** → conferir MANTER/DELETAR → **Enviar cópias à lixeira**. Duplo clique numa linha abre a pasta do arquivo.
+Na tela: **Procurar** a pasta → conferir totais e o dropdown **Extensões** (todas marcadas; desmarque o que quiser ignorar) → **só imagens** ou **todos os arquivos** → marcar **cópias exatas** e/ou **visuais** → distância (se visual) → **Analisar** → conferir MANTER/DELETAR → **Enviar cópias à lixeira**. Duplo clique numa linha abre a pasta no Explorer com o arquivo selecionado.
 
 Sem ativar o venv (Git Bash, na pasta do projeto):
 
