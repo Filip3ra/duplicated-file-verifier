@@ -5,7 +5,7 @@ from pathlib import Path
 from duplicate_verifier.estimate import estimate_seconds, format_bytes, format_duration
 from duplicate_verifier.grouping import cluster_hashes
 from duplicate_verifier.hashing import hamming_distance
-from duplicate_verifier.models import ImageFile
+from duplicate_verifier.models import DuplicateGroup, GroupKind, ImageFile
 from duplicate_verifier.quality import pick_keep
 from duplicate_verifier.scanner import filter_files_by_extensions, scan_files, scan_images
 
@@ -22,6 +22,28 @@ def test_estimate_is_lower_without_phash() -> None:
     full = estimate_seconds(100, 50 * 1024 * 1024, include_visual=True)
     exact = estimate_seconds(100, 50 * 1024 * 1024, include_visual=False)
     assert full > exact > 0
+
+
+def test_group_skip_when_no_keep_and_allow_multiple_keep(tmp_path: Path) -> None:
+    a = ImageFile(path=tmp_path / "a.jpg", size_bytes=10)
+    b = ImageFile(path=tmp_path / "b.jpg", size_bytes=20)
+    c = ImageFile(path=tmp_path / "c.jpg", size_bytes=30)
+    group = DuplicateGroup(kind=GroupKind.EXACT, keep=[a], delete=[b, c])
+
+    group.set_file_kept(b, keep=True)
+    assert {item.path.name for item in group.keep} == {"a.jpg", "b.jpg"}
+    assert [item.path.name for item in group.files_to_trash()] == ["c.jpg"]
+    assert group.reclaimable_bytes == 30
+
+    group.set_file_kept(a, keep=False)
+    group.set_file_kept(b, keep=False)
+    assert group.keep == []
+    assert group.files_to_trash() == []
+    assert group.reclaimable_bytes == 0
+
+    group.set_file_kept(c, keep=True)
+    assert group.keep == [c]
+    assert {item.path.name for item in group.files_to_trash()} == {"a.jpg", "b.jpg"}
 
 
 def test_pick_keep_prefers_higher_resolution() -> None:

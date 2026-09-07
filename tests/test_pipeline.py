@@ -22,7 +22,7 @@ def test_pipeline_keeps_higher_quality_visual_duplicate(tmp_path: Path) -> None:
 
     assert len(result.groups) == 1
     group = result.groups[0]
-    assert group.keep.path.name == "original.png"
+    assert group.keep[0].path.name == "original.png"
     assert [item.path.name for item in group.delete] == ["copy.jpg"]
 
 

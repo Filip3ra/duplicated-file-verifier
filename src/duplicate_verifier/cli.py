@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_report(stats, result, use_color=use_color)
     save_plan(stats.root, result)
 
-    to_delete = [item for group in result.groups for item in group.delete]
+    to_delete = [item for group in result.groups for item in group.files_to_trash()]
     if not args.delete:
         _print_plan_hint(len(to_delete))
         return 0
@@ -360,7 +360,8 @@ def _print_group(index: int, group: DuplicateGroup, root: Path, *, use_color: bo
     else:
         title = f"duplicatas visuais (distância perceptual até {group.max_hamming})"
     print(f"Grupo {index} — {title}")
-    _print_file_line(group.keep, root, keep=True, use_color=use_color)
+    for item in group.keep:
+        _print_file_line(item, root, keep=True, use_color=use_color)
     for item in group.delete:
         _print_file_line(item, root, keep=False, use_color=use_color)
 

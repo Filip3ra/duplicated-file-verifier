@@ -31,17 +31,36 @@ class ImageFile:
 @dataclass
 class DuplicateGroup:
     kind: GroupKind
-    keep: ImageFile
+    keep: list[ImageFile]
     delete: list[ImageFile] = field(default_factory=list)
     max_hamming: int = 0
 
     @property
     def files(self) -> list[ImageFile]:
-        return [self.keep, *self.delete]
+        return [*self.keep, *self.delete]
 
     @property
     def reclaimable_bytes(self) -> int:
+        if not self.keep:
+            return 0
         return sum(item.size_bytes for item in self.delete)
+
+    def files_to_trash(self) -> list[ImageFile]:
+        """Files to send to trash. Empty when the group has no keep (skipped)."""
+        if not self.keep:
+            return []
+        return list(self.delete)
+
+    def set_file_kept(self, image: ImageFile, *, keep: bool) -> None:
+        """Move ``image`` between keep and delete. An empty keep skips the group."""
+        remaining_keep = [item for item in self.keep if item.path != image.path]
+        remaining_delete = [item for item in self.delete if item.path != image.path]
+        if keep:
+            self.keep = [*remaining_keep, image]
+            self.delete = remaining_delete
+        else:
+            self.keep = remaining_keep
+            self.delete = [*remaining_delete, image]
 
 
 @dataclass
@@ -76,4 +95,4 @@ class AnalysisResult:
 
     def reclaimable_count(self, kind: GroupKind | None = None) -> int:
         groups = self.groups if kind is None else [g for g in self.groups if g.kind is kind]
-        return sum(len(group.delete) for group in groups)
+        return sum(len(group.files_to_trash()) for group in groups)

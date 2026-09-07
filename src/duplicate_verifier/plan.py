@@ -39,10 +39,10 @@ def save_plan(
             {
                 "path": str(item.path.resolve()),
                 "size_bytes": item.size_bytes,
-                "keep": str(group.keep.path.resolve()),
+                "keep": str(group.keep[0].path.resolve()) if group.keep else "",
             }
             for group in result.groups
-            for item in group.delete
+            for item in group.files_to_trash()
         ],
     }
     destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

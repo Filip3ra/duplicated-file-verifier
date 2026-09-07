@@ -205,7 +205,7 @@ def _groups_from_sha_map(by_sha: dict[str, list[ImageFile]]) -> list[DuplicateGr
         if len(copies) < 2:
             continue
         keep, delete = pick_keep(copies)
-        groups.append(DuplicateGroup(kind=GroupKind.EXACT, keep=keep, delete=delete))
+        groups.append(DuplicateGroup(kind=GroupKind.EXACT, keep=[keep], delete=delete))
     return groups
 
 
@@ -255,7 +255,7 @@ def _groups_from_visual_clusters(
         groups.append(
             DuplicateGroup(
                 kind=GroupKind.VISUAL,
-                keep=keep,
+                keep=[keep],
                 delete=delete,
                 max_hamming=_max_hamming(unique_hashes),
             )

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -21,6 +22,9 @@ from duplicate_verifier.models import AnalysisResult, DuplicateGroup, GroupKind,
 from duplicate_verifier.pipeline import analyze
 from duplicate_verifier.plan import save_plan
 from duplicate_verifier.scanner import filter_files_by_extensions, scan_files
+
+GITHUB_URL = "https://github.com/Filip3ra"
+CREDIT_COLOR = "#d62965"
 
 
 def selected_extension_labels(ext_vars: dict[str, tk.BooleanVar]) -> frozenset[str]:
@@ -85,6 +89,9 @@ class DupcheckApp(tk.Tk):
         self._busy = False
         self._stats: ScanStats | None = None
         self._result: AnalysisResult | None = None
+        self._row_refs: dict[str, tuple[int, ImageFile]] = {}
+        self._pending_toggle = None
+        self._context_iid: str | None = None
 
         self.folder_var = tk.StringVar(value=str(initial_directory or ""))
         self.scope_var = tk.StringVar(value="images")
@@ -201,9 +208,34 @@ class DupcheckApp(tk.Tk):
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.tag_configure("keep", foreground="#0a7a28")
         self.tree.tag_configure("delete", foreground="#b42318")
+        self.tree.tag_configure("skipped", foreground="#6b7280")
+        self.tree.bind("<Button-1>", self._on_tree_click)
         self.tree.bind("<Double-1>", self._open_selected)
+        self.tree.bind("<Button-3>", self._on_tree_right_click)
+        self.tree.bind("<space>", self._on_tree_space)
+        self._action_menu = tk.Menu(self, tearoff=0)
+        self._action_menu.add_command(label="MANTER", command=self._context_keep)
+        self._action_menu.add_command(label="DELETAR", command=self._context_delete)
 
-        ttk.Label(self, textvariable=self.status_var, padding=(10, 6)).pack(fill=tk.X)
+        footer = ttk.Frame(self, padding=(10, 6))
+        footer.pack(fill=tk.X)
+        ttk.Label(footer, textvariable=self.status_var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        style = ttk.Style(self)
+        credit_kwargs: dict[str, object] = {
+            "text": "Feito com \u2615 por Filipi Maciel",
+            "fg": CREDIT_COLOR,
+            "cursor": "hand2",
+            "padx": 2,
+        }
+        frame_bg = style.lookup("TFrame", "background")
+        if frame_bg:
+            credit_kwargs["bg"] = frame_bg
+        credit = tk.Label(footer, **credit_kwargs)
+        credit.pack(side=tk.RIGHT)
+        credit.bind("<Button-1>", self._open_github)
+
+    def _open_github(self, _event: tk.Event | None = None) -> None:
+        webbrowser.open(GITHUB_URL)
 
     def _on_visual_toggle(self) -> None:
         self._sync_threshold_state()
@@ -413,21 +445,7 @@ class DupcheckApp(tk.Tk):
         self._refresh_preview_estimate()
         self._finish_busy()
         self._fill_table(stats, result)
-        summary = _summary_text(stats, result)
-        self.summary.configure(text=summary)
-        marked = result.reclaimable_count()
-        self.trash_btn.configure(state=tk.NORMAL if marked else tk.DISABLED)
-        if stats.total_files == 0:
-            self.status_var.set("Nenhum arquivo encontrado nesse escopo.")
-        elif marked == 0:
-            self.status_var.set(
-                f"Concluído em {format_duration(result.elapsed_seconds)}. Nenhuma duplicata."
-            )
-        else:
-            self.status_var.set(
-                f"Concluído em {format_duration(result.elapsed_seconds)}. "
-                f"{marked} arquivo(s) marcados. Duplo clique abre a pasta com o arquivo selecionado."
-            )
+        self._refresh_after_edit(analysis_elapsed=result.elapsed_seconds)
 
     def _finish_busy(self, *, clear_trash_count: bool = True) -> None:
         self._busy = False
@@ -437,16 +455,29 @@ class DupcheckApp(tk.Tk):
             self.trash_count_var.set("")
 
     def _clear_table(self) -> None:
+        self._cancel_pending_toggle()
         for item in self.tree.get_children():
             self.tree.delete(item)
+        self._row_refs.clear()
 
     def _fill_table(self, stats: ScanStats, result: AnalysisResult) -> None:
         self._clear_table()
         for index, group in enumerate(result.groups, start=1):
             kind = "exata" if group.kind is GroupKind.EXACT else "visual"
-            self._insert_row(index, group.keep, action="MANTER", kind=kind, tag="keep", root=stats.root)
+            skipped = not group.keep
+            for item in group.keep:
+                self._insert_row(
+                    index, item, action="MANTER", kind=kind, tag="skipped" if skipped else "keep", root=stats.root
+                )
             for item in group.delete:
-                self._insert_row(index, item, action="DELETAR", kind=kind, tag="delete", root=stats.root)
+                self._insert_row(
+                    index,
+                    item,
+                    action="DELETAR",
+                    kind=kind,
+                    tag="skipped" if skipped else "delete",
+                    root=stats.root,
+                )
 
     def _insert_row(
         self,
@@ -466,14 +497,124 @@ class DupcheckApp(tk.Tk):
             detail = f"{image.width}x{image.height}"
         else:
             detail = image.path.suffix.lower() or "arquivo"
-        self.tree.insert(
+        iid = self.tree.insert(
             "",
             tk.END,
             values=(group_index, action, rel, kind, detail, format_bytes(image.size_bytes)),
             tags=(tag,),
         )
+        self._row_refs[iid] = (group_index - 1, image)
+
+    def _cancel_pending_toggle(self) -> None:
+        job = self._pending_toggle
+        if job is not None:
+            self.after_cancel(job)
+            self._pending_toggle = None
+
+    def _on_tree_click(self, event: tk.Event) -> None:
+        if self.tree.identify_region(event.x, event.y) != "cell":
+            return
+        if self.tree.identify_column(event.x) != "#2":
+            return
+        row = self.tree.identify_row(event.y)
+        if not row:
+            return
+        self._cancel_pending_toggle()
+        self._pending_toggle = self.after(280, lambda iid=row: self._toggle_row(iid))
+
+    def _on_tree_space(self, _event: tk.Event) -> str:
+        self._cancel_pending_toggle()
+        iid = self.tree.focus() or (self.tree.selection()[0] if self.tree.selection() else "")
+        if iid:
+            self._toggle_row(iid)
+        return "break"
+
+    def _on_tree_right_click(self, event: tk.Event) -> None:
+        row = self.tree.identify_row(event.y)
+        if not row or self._busy or not self._result:
+            return
+        self.tree.selection_set(row)
+        self.tree.focus(row)
+        self._context_iid = row
+        self._action_menu.tk_popup(event.x_root, event.y_root)
+
+    def _context_keep(self) -> None:
+        if self._context_iid:
+            self._set_row_kept(self._context_iid, keep=True)
+
+    def _context_delete(self) -> None:
+        if self._context_iid:
+            self._set_row_kept(self._context_iid, keep=False)
+
+    def _toggle_row(self, iid: str) -> None:
+        self._pending_toggle = None
+        ref = self._row_refs.get(iid)
+        if not ref or not self._result or self._busy:
+            return
+        group = self._result.groups[ref[0]]
+        image = ref[1]
+        currently_keep = any(item.path == image.path for item in group.keep)
+        self._set_row_kept(iid, keep=not currently_keep)
+
+    def _set_row_kept(self, iid: str, *, keep: bool) -> None:
+        if self._busy or not self._result or not self._stats:
+            return
+        ref = self._row_refs.get(iid)
+        if not ref:
+            return
+        group_index, image = ref
+        self._result.groups[group_index].set_file_kept(image, keep=keep)
+        self._apply_group_styles(group_index)
+        save_plan(self._stats.root, self._result)
+        self._refresh_after_edit()
+
+    def _apply_group_styles(self, group_index: int) -> None:
+        if not self._result:
+            return
+        group = self._result.groups[group_index]
+        skipped = not group.keep
+        keep_paths = {item.path for item in group.keep}
+        for iid, (idx, image) in self._row_refs.items():
+            if idx != group_index:
+                continue
+            is_keep = image.path in keep_paths
+            action = "MANTER" if is_keep else "DELETAR"
+            if skipped:
+                tag = "skipped"
+            elif is_keep:
+                tag = "keep"
+            else:
+                tag = "delete"
+            values = list(self.tree.item(iid, "values"))
+            values[1] = action
+            self.tree.item(iid, values=values, tags=(tag,))
+
+    def _refresh_after_edit(self, *, analysis_elapsed: float | None = None) -> None:
+        if not self._stats or not self._result:
+            return
+        self.summary.configure(text=_summary_text(self._stats, self._result))
+        marked = self._result.reclaimable_count()
+        skipped = sum(1 for group in self._result.groups if not group.keep)
+        if not self._busy:
+            self.trash_btn.configure(state=tk.NORMAL if marked else tk.DISABLED)
+        if self._stats.total_files == 0:
+            self.status_var.set("Nenhum arquivo encontrado nesse escopo.")
+            return
+        prefix = ""
+        if analysis_elapsed is not None:
+            prefix = f"Concluído em {format_duration(analysis_elapsed)}. "
+        hints = " Clique em Ação ou botão direito para alterar. Duplo clique abre a pasta."
+        skip_txt = f" {skipped} grupo(s) em cinza serão ignorados." if skipped else ""
+        if not self._result.groups:
+            self.status_var.set(prefix + "Nenhuma duplicata.")
+            return
+        if marked == 0:
+            self.status_var.set(prefix + f"Nenhum arquivo irá à lixeira.{skip_txt}{hints}")
+            return
+        self.status_var.set(prefix + f"{marked} arquivo(s) marcados.{skip_txt}{hints}")
 
     def _open_selected(self, _event: tk.Event | None = None) -> None:
+        self._cancel_pending_toggle()
         selected = self.tree.selection()
         if not selected or not self._stats:
             return
@@ -487,14 +628,18 @@ class DupcheckApp(tk.Tk):
     def _confirm_trash(self) -> None:
         if self._busy or not self._result:
             return
-        to_delete = [item for group in self._result.groups for item in group.delete]
+        to_delete = [item for group in self._result.groups for item in group.files_to_trash()]
         if not to_delete:
             messagebox.showinfo("Lixeira", "Não há arquivos marcados.")
             return
         total = format_bytes(sum(item.size_bytes for item in to_delete))
+        skipped = sum(1 for group in self._result.groups if not group.keep)
+        skip_note = (
+            f"\n{skipped} grupo(s) em cinza (sem MANTER) não serão enviados." if skipped else ""
+        )
         if not messagebox.askyesno(
             "Enviar à lixeira",
-            f"Enviar {len(to_delete)} arquivo(s) ({total}) para a lixeira?\n"
+            f"Enviar {len(to_delete)} arquivo(s) ({total}) para a lixeira?{skip_note}\n"
             "Dá para restaurar pela Lixeira do Windows.",
         ):
             return

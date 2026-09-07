@@ -11,7 +11,7 @@ def test_save_and_load_plan(tmp_path: Path, monkeypatch) -> None:
     keep = ImageFile(path=tmp_path / "keep.png", size_bytes=10)
     dump = ImageFile(path=tmp_path / "dump.jpg", size_bytes=4)
     result = AnalysisResult(
-        groups=[DuplicateGroup(kind=GroupKind.VISUAL, keep=keep, delete=[dump])],
+        groups=[DuplicateGroup(kind=GroupKind.VISUAL, keep=[keep], delete=[dump])],
         failed=[],
         unique_contents=2,
         elapsed_seconds=0.1,
