@@ -14,6 +14,8 @@ Percorre um diretório (e as subpastas) e encontra duplicatas:
 
 Em cada grupo **mantém a de maior qualidade** e marca o resto para a lixeira. Por padrão nada é apagado.
 
+Licença **MIT** (grátis): veja o arquivo [`LICENSE`](LICENSE). Pode usar, copiar e modificar; o software é oferecido **sem garantia**.
+
 ## Estratégia (e por que não comparar imagem com imagem)
 
 Comparar cada par de fotos pixel a pixel seria O(n²) e muito lento. O fluxo usa filtros baratos primeiro:
@@ -285,6 +287,7 @@ PowerShell:
 | `dupcheck-gui: command not found` | venv inativo ou install antigo | Ative o venv e rode de novo `python -m pip install -e .` |
 | `bash: --delete: command not found` | `--delete` numa linha sozinha | `dupcheck --delete` **junto**, um único comando |
 | `pip` instala mas `dupcheck` não existe | `pip` do sistema, não do venv | Com o venv ativo: `python -m pip install -e .` |
+| Windows bloqueia o instalador (`dupcheck-setup-…exe`) | SmartScreen / controle de aplicativos (exe ainda sem assinatura) | Ver [SmartScreen no Windows](#smartscreen-no-windows) |
 
 ## Testes (opcional)
 
@@ -348,6 +351,23 @@ Só o bundle, sem instalador:
 python installer/build_windows.py --skip-installer
 ```
 
+### SmartScreen no Windows
+
+O instalador **não é assinado** com certificado Authenticode. O Windows pode mostrar **“O Windows protegeu o seu PC”** ou recusar o `.exe`. Isso não significa vírus; é reputação de arquivo novo/não assinado.
+
+**Opção 1 (recomendada, só neste arquivo):** na tela do SmartScreen, **Mais informações** → **Executar assim mesmo**. Se o Explorer marcar o arquivo como baixado da internet: botão direito no `.exe` → **Propriedades** → **Desbloquear** → **OK**.
+
+**Opção 2:** desativar o **Controle de aplicativos e do navegador** (SmartScreen / proteção baseada em reputação). Isso também deixa o instalador passar, mas vale para **qualquer** programa neste Windows, não só o dupcheck.
+
+1. Abra **Segurança do Windows** (ou Configurações → Privacidade e segurança → Segurança do Windows).
+2. **Controle de aplicativos e do navegador**.
+3. Em **Proteção baseada em reputação** (ou equivalente), desligue **Verificar aplicativos e arquivos** / Microsoft Defender SmartScreen.
+4. Se existir **Controle de aplicativo inteligente** (Smart App Control) e estiver ligado, desligue — enquanto ativo, ele pode continuar bloqueando.
+
+Para voltar a proteção depois de instalar, ligue de novo as mesmas opções.
+
+O instalador inclui o texto da licença MIT na instalação.
+
 ## Distância visual (pHash / Hamming)
 
 O método `visual` não compara pixel a pixel. Cada imagem vira um **hash perceptual de 64 bits** (pHash): um “resumo” da foto depois de reduzir e olhar frequências (DCT). Duas versões da mesma foto (JPEG ruim, outro tamanho, PNG vs JPG) tendem a hashes **parecidos**.
@@ -374,3 +394,7 @@ O método `exact` ignora isso: só entra arquivo com os **mesmos bytes** (SHA-25
 - Sem `--all-files`, a varredura padrão é só **imagens**. Com `--all-files`, o `exact` vale para qualquer arquivo; o `visual` continua só em imagens.
 - Recortes, filtros pesados ou fotos só parecidas (mesmo lugar, outro clique) em geral **não** são o mesmo arquivo — o pHash não deve agrupá-los com o limiar padrão.
 - A “menor qualidade” é uma heurística (resolução, tamanho, formato), não um índice fotográfico profissional.
+
+## Licença
+
+Distribuído sob a [licença MIT](LICENSE). Copyright (c) 2026 Filipi Maciel. O programa é fornecido “como está”, sem garantia.

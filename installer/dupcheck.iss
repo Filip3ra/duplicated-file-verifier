@@ -28,6 +28,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
+LicenseFile=..\LICENSE
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -38,6 +39,7 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDesc
 
 [Files]
 Source: "..\dist\dupcheck\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\dupcheck"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Comment: "Verificador de arquivos duplicados"

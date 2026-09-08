@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 SPEC_DIR = Path(SPECPATH).resolve()
 ROOT = SPEC_DIR.parent
@@ -16,12 +16,19 @@ datas = [
         "duplicate_verifier/assets",
     )
 ]
+binaries: list = []
 hiddenimports = [
     *collect_submodules("PIL"),
+    *collect_submodules("send2trash"),
     "PIL._tkinter_finder",
     "imagehash",
     "numpy",
+    "pywt",
     "send2trash",
+    "send2trash.exceptions",
+    "send2trash.win",
+    "send2trash.win.legacy",
+    "send2trash.win.modern",
     "tkinter",
     "tkinter.filedialog",
     "tkinter.messagebox",
@@ -29,13 +36,19 @@ hiddenimports = [
     "tqdm",
     "multiprocessing",
 ]
+for package in ("send2trash", "imagehash", "PIL", "numpy", "tqdm", "pywt"):
+    pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
+    datas += pkg_datas
+    binaries += pkg_binaries
+    hiddenimports += pkg_hidden
+
 excludes = ["pytest", "scipy"]
 icon_path = str(ICON) if ICON.is_file() else None
 
 gui_a = Analysis(
     [str(SPEC_DIR / "gui_entry.py")],
     pathex=[str(SRC)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -64,8 +77,8 @@ gui_exe = EXE(
 cli_a = Analysis(
     [str(SPEC_DIR / "cli_entry.py")],
     pathex=[str(SRC)],
-    binaries=[],
-    datas=[],
+    binaries=binaries,
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

@@ -73,6 +73,24 @@ def build_bundle(*, clean: bool) -> None:
     if not GUI_EXE.is_file() or not CLI_EXE.is_file():
         raise SystemExit(f"PyInstaller não gerou os executáveis em {BUNDLE_DIR}")
     print(f"Pasta do app: {BUNDLE_DIR}")
+    verify_bundle()
+
+
+def verify_bundle() -> None:
+    """Fail the build if the frozen CLI cannot import bundled dependencies."""
+    result = subprocess.run(
+        [str(CLI_EXE), "--version"],
+        cwd=BUNDLE_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 0:
+        raise SystemExit(
+            "O exe congelado falhou no --version (dependência em falta?):\n" + output
+        )
+    print(output.strip() or "dupcheck-cli --version ok")
 
 
 def build_installer(version: str) -> Path:
