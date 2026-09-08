@@ -69,6 +69,32 @@ def reveal_in_file_manager(path: Path) -> None:
     subprocess.Popen(["xdg-open", str(folder)])
 
 
+def package_assets_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            bundled = Path(meipass) / "duplicate_verifier" / "assets"
+            if bundled.is_dir():
+                return bundled
+    return Path(__file__).resolve().parent / "assets"
+
+
+def apply_window_icon(window: tk.Tk) -> None:
+    """Set the window/taskbar icon from the bundled .ico (Windows title bar)."""
+    assets = package_assets_dir()
+    ico = assets / "dupcheck-icon-png.ico"
+    png = assets / "dupcheck-icon-png.png"
+    try:
+        if sys.platform == "win32" and ico.is_file():
+            window.iconbitmap(str(ico))
+        if png.is_file():
+            photo = tk.PhotoImage(file=str(png))
+            window.iconphoto(True, photo)
+            window._dupcheck_icon_photo = photo  # keep a reference
+    except tk.TclError:
+        pass
+
+
 def run_app(initial_directory: str | Path | None = None) -> int:
     app = DupcheckApp(initial_directory=initial_directory)
     app.mainloop()
@@ -83,6 +109,7 @@ class DupcheckApp(tk.Tk):
     def __init__(self, initial_directory: str | Path | None = None) -> None:
         super().__init__()
         self.title("dupcheck — verificador de duplicatas")
+        apply_window_icon(self)
         self.minsize(920, 560)
         self.geometry("1000x640")
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from duplicate_verifier.actions import send_marked_to_trash
-from duplicate_verifier.gui import methods_from_toggles, selected_extension_labels
+from duplicate_verifier.gui import methods_from_toggles, package_assets_dir, selected_extension_labels
 from duplicate_verifier.models import ImageFile
 
 
@@ -35,3 +35,17 @@ def test_trash_progress_callback(tmp_path: Path, monkeypatch) -> None:
     result = send_marked_to_trash(files, on_progress=lambda done, total: seen.append((done, total)))
     assert result.deleted == 2
     assert seen == [(1, 2), (2, 2)]
+
+
+def test_package_assets_dir_contains_icon() -> None:
+    assets = package_assets_dir()
+    assert (assets / "dupcheck-icon-png.ico").is_file()
+    assert (assets / "dupcheck-icon-png.png").is_file()
+
+
+def test_windows_packaging_scripts_exist() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert (root / "installer" / "dupcheck.spec").is_file()
+    assert (root / "installer" / "dupcheck.iss").is_file()
+    assert (root / "installer" / "build_windows.py").is_file()
+

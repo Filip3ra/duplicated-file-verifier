@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
+package = ["pyinstaller>=6.0"]
 
 [project.scripts]
 dupcheck = "duplicate_verifier.cli:main"
@@ -28,6 +29,9 @@ dupcheck-gui = "duplicate_verifier.gui:run_app_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+duplicate_verifier = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

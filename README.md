@@ -5,6 +5,8 @@ Dá para usar de **duas formas** (o mesmo programa):
 - **Terminal** — comando `dupcheck`
 - **Janela gráfica** — `dupcheck --gui` ou `dupcheck-gui`
 
+No Windows também dá para instalar pelo `dist/dupcheck-setup-0.1.0.exe` (atalho no Menu Iniciar; ver seção **Instalador Windows**).
+
 Percorre um diretório (e as subpastas) e encontra duplicatas:
 
 - **exatas** — o mesmo arquivo copiado (bytes idênticos), em imagens ou, com `--all-files`, em PDF, DOCX, etc.;
@@ -321,6 +323,30 @@ Grupo 1 — duplicatas visuais (distância perceptual até 4)
 `MANTER` é a melhor versão do grupo. `DELETAR` são as que `dupcheck --delete` enviaria à lixeira.
 
 No rodapé aparece o **tamanho analisado** e o **espaço recuperável** por método (cópias exatas vs visuais) e o total.
+
+## Instalador Windows (exe)
+
+Gera a pasta `dist/dupcheck` (duplo clique em `dupcheck.exe`) e, se o [Inno Setup 6](https://jrsoftware.org/isinfo.php) estiver instalado, o `dist/dupcheck-setup-0.1.0.exe`.
+
+```powershell
+python -m pip install -e ".[package]"
+python installer/build_windows.py
+```
+
+Sem o Inno Setup, o script ainda gera a pasta do app e pede para instalar o compilador:
+
+```powershell
+winget install JRSoftware.InnoSetup
+python installer/build_windows.py --skip-bundle
+```
+
+O instalador copia o programa em `%LOCALAPPDATA%\dupcheck` (não precisa de admin), cria atalho no Menu Iniciar e oferece atalho na área de trabalho. `dupcheck.exe` abre a janela; `dupcheck-cli.exe` é o terminal (`dupcheck-cli --help`).
+
+Só o bundle, sem instalador:
+
+```powershell
+python installer/build_windows.py --skip-installer
+```
 
 ## Distância visual (pHash / Hamming)
 
