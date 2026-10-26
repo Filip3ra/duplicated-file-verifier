@@ -1,5 +1,7 @@
 # Verificador de arquivos duplicados
 
+![Texto alternativo](/assets/dupcheck-logo.png)
+
 Dá para usar de **duas formas** (o mesmo programa):
 
 - **Terminal** — comando `dupcheck`
